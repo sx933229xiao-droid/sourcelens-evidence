@@ -59,6 +59,7 @@ export async function compareSources(
     throw new ComparisonError("The server's LLM_BASE_URL is not a valid HTTP or HTTPS API base URL.", 503);
   }
 
+  const startedAt = performance.now();
   let response: Response;
   try {
     response = await fetch(endpoint, {
@@ -85,6 +86,8 @@ export async function compareSources(
     throw new ComparisonError("SourceLens could not reach the AI provider. Check the server's API address and connection, then try again.");
   }
 
+  const headersReceivedAt = performance.now();
+
   if (!response.ok) {
     const message = response.status === 401 || response.status === 403
       ? "The AI provider rejected the server credentials. Check LLM_API_KEY and model access."
@@ -95,8 +98,13 @@ export async function compareSources(
   }
 
   let data: unknown;
+  let bodyReceivedAt: number;
+  let usage: { prompt_tokens?: number; completion_tokens?: number; completion_tokens_details?: { reasoning_tokens?: number } } | undefined;
   try {
-    const completion = await response.json();
+    const responseText = await response.text();
+    bodyReceivedAt = performance.now();
+    const completion = JSON.parse(responseText);
+    usage = completion?.usage;
     const content: unknown = completion?.choices?.[0]?.message?.content;
     if (typeof content !== "string") throw new Error("Missing content");
     // Some compatible providers wrap otherwise valid JSON in a Markdown fence.
@@ -110,6 +118,21 @@ export async function compareSources(
   if (!result || result.findings.length === 0) {
     throw new ComparisonError("No usable findings with matching source excerpts were returned. Try again with more specific source text.");
   }
+
+  const completedAt = performance.now();
+  const reportedServiceTime = response.headers.get("x-envoy-upstream-service-time");
+  // Non-streaming header wait can include connection, queueing, and generation.
+  // Keep one timing line per successful comparison; never log source text or credentials.
+  console.info("[SourceLens timing]", JSON.stringify({
+    providerHeadersMs: Math.round(headersReceivedAt - startedAt),
+    providerBodyMs: Math.round(bodyReceivedAt - headersReceivedAt),
+    processingMs: Math.round(completedAt - bodyReceivedAt),
+    totalMs: Math.round(completedAt - startedAt),
+    upstreamReportedMs: reportedServiceTime !== null && Number.isFinite(Number(reportedServiceTime)) ? Number(reportedServiceTime) : undefined,
+    promptTokens: usage?.prompt_tokens,
+    completionTokens: usage?.completion_tokens,
+    reasoningTokens: usage?.completion_tokens_details?.reasoning_tokens,
+  }));
 
   return result;
 }

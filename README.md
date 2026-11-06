@@ -16,7 +16,7 @@ Instead of producing only a general AI summary, SourceLens aims to identify agre
 
 ## Development Status
 
-**V0 running locally — first real AI comparison verified November 7, 2026.**
+**V0.1 running locally — result-reading improvements verified November 7, 2026.**
 
 The Next.js application runs locally and its production build passes. On November 7, a real NVIDIA-hosted model call completed through **Try Example → Compare Sources → Findings → Original Evidence**. The local provider configuration uses `https://integrate.api.nvidia.com/v1` with `nvidia/nemotron-3.5-lightning-30b-a3b`; the API key is kept only in the Git-ignored local environment file.
 
@@ -29,6 +29,7 @@ The Next.js application runs locally and its production build passes. On Novembe
 - Findings with a topic, explanation, and expandable original excerpts; **Locate in source** selects the matching text in the input.
 - Independent validation of findings. Invalid findings are omitted while valid findings remain visible; unreadable responses or responses with no usable findings return an error.
 - Desktop and narrow-screen layouts, loading feedback, input limits, and errors that preserve the source text.
+- After analysis, the desktop workspace gives sources and findings approximately 55:45 of the available width. Result explanations and excerpts use 14px text, with clearer 12px evidence actions.
 
 ### Verified for this delivery
 
@@ -37,8 +38,15 @@ The Next.js application runs locally and its production build passes. On Novembe
 - An inline check that valid findings survive alongside invalid citations, with no separate test framework or test directory.
 - A real-model browser comparison of the fictional competition example: the deadline was marked as a potential conflict, individual eligibility as an agreement, and team eligibility as a single-source claim from Source B.
 - Expansion of original excerpts and **Locate in source**, including selection of the exact individual-eligibility sentence in Source A.
+- A V0.1 live comparison retained the three expected findings. Desktop findings width increased from 35% before analysis to 45% afterward; the narrow-screen result view remained a single column without horizontal overflow.
 
 This verifies the complete AI-to-evidence workflow for this example; it does not establish accuracy across arbitrary documents or every relationship category. No precomputed comparison results are used.
+
+### V0.1 response timing
+
+One real example comparison with the existing NVIDIA Lightning model took **44,272ms**: **44,157ms** until provider response headers, **115ms** receiving the response body, and **1ms** parsing and verifying findings. The provider reported 3,733 completion tokens, including 3,374 reasoning tokens (about 90%). One timing line is written to the server console per successful comparison; it contains durations and token counts, without source text or credentials.
+
+For this non-streaming request, the wait before headers can include connection setup, provider queueing, and generation; these timings cannot isolate pure inference from network or queue time. The observed delay is in the external provider call rather than local parsing or evidence validation. V0.1 retains the existing model parameters. The smallest proposed next adjustment is lowering NVIDIA's supported `reasoning_budget` from its documented default of 16,384 to 1,024, then checking the same findings and excerpts. The five relationship types and citation validation remain in place. See [NVIDIA's model API reference](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-5-lightning-30b-a3b-infer).
 
 ## Run Locally
 

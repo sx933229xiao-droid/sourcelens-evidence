@@ -145,7 +145,7 @@ export function ComparisonWorkspace() {
 
           {error && <div className="error-notice" role="alert"><CircleAlert size={18} aria-hidden="true" /><div><strong>Comparison unavailable</strong><p>{error}</p></div><button type="button" className="dismiss-error" onClick={() => setError(null)} aria-label="Dismiss error"><X size={16} aria-hidden="true" /></button></div>}
 
-          <div className="workspace-grid">
+          <div className={`workspace-grid${result ? " has-results" : ""}`}>
             <div className="sources-grid">
               <SourcePanel source="A" value={sources.sourceA} onChange={(value) => updateSource("A", value)} readOnly={loading} inputRef={sourceARef} />
               <SourcePanel source="B" value={sources.sourceB} onChange={(value) => updateSource("B", value)} readOnly={loading} inputRef={sourceBRef} />
@@ -160,7 +160,7 @@ export function ComparisonWorkspace() {
         </form>
       </main>
 
-      <footer className="app-footer"><span className="version-label">SourceLens <span>V0</span></span><p>Sources are sent to your configured AI provider. This workspace clears on refresh.</p><a href="https://github.com/sx933229xiao-droid/sourcelens-evidence" target="_blank" rel="noreferrer">Project on GitHub <ArrowRight size={12} aria-hidden="true" /></a></footer>
+      <footer className="app-footer"><span className="version-label">SourceLens <span>V0.1</span></span><p>Sources are sent to your configured AI provider. This workspace clears on refresh.</p><a href="https://github.com/sx933229xiao-droid/sourcelens-evidence" target="_blank" rel="noreferrer">Project on GitHub <ArrowRight size={12} aria-hidden="true" /></a></footer>
       <span className="sr-only" role="status" aria-live="polite">{result ? `Comparison complete. ${result.findings.length} findings with matching source excerpts.` : ""}</span>
     </div>
   );
