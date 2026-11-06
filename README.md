@@ -16,9 +16,9 @@ Instead of producing only a general AI summary, SourceLens aims to identify agre
 
 ## Development Status
 
-**V0 implemented locally — November 6, 2026. Live AI validation pending configuration.**
+**V0 running locally — first real AI comparison verified November 7, 2026.**
 
-The Next.js application can be started locally and its production build passes. The workspace, server-side model integration, structured results, and evidence interactions are implemented. No AI provider was configured on the development machine for this delivery, so a successful real-model comparison and its semantic quality have **not** been verified yet.
+The Next.js application runs locally and its production build passes. On November 7, a real NVIDIA-hosted model call completed through **Try Example → Compare Sources → Findings → Original Evidence**. The local provider configuration uses `https://integrate.api.nvidia.com/v1` with `nvidia/nemotron-3.5-lightning-30b-a3b`; the API key is kept only in the Git-ignored local environment file.
 
 ### Implemented
 
@@ -35,8 +35,10 @@ The Next.js application can be started locally and its production build passes. 
 - Production build, including TypeScript checking.
 - Browser operation of source inputs, example loading, and missing-configuration feedback.
 - An inline check that valid findings survive alongside invalid citations, with no separate test framework or test directory.
+- A real-model browser comparison of the fictional competition example: the deadline was marked as a potential conflict, individual eligibility as an agreement, and team eligibility as a single-source claim from Source B.
+- Expansion of original excerpts and **Locate in source**, including selection of the exact individual-eligibility sentence in Source A.
 
-Live model behavior, relationship accuracy, and a successful AI-to-evidence interaction remain unverified until a provider is configured. The app does not generate simulated findings when configuration is missing.
+This verifies the complete AI-to-evidence workflow for this example; it does not establish accuracy across arbitrary documents or every relationship category. No precomputed comparison results are used.
 
 ## Run Locally
 
@@ -112,7 +114,7 @@ This project is being developed for the [Global AI Builder's Challenge 2026](htt
 
 Pre-hackathon work and improvements made during the official competition period will be identified separately in the final submission.
 
-The V0 implementation documented here is pre-hackathon work completed on November 6, 2026, starting from README-only commit `3007754`. At the beginning of the official development period, record the then-current commit and describe subsequent event contributions separately. A real-model comparison is still pending provider configuration at this point.
+The V0 implementation is pre-hackathon work completed on November 6, 2026, starting from README-only commit `3007754`. The first real-model integration check and claim-splitting prompt adjustment followed on November 7. At the beginning of the official development period, record the then-current commit and describe subsequent event contributions separately.
 
 ## Development
 

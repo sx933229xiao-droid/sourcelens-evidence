@@ -31,7 +31,7 @@ Return ONLY a JSON object with a findings array. Each finding must contain:
 Rules:
 1. Match the same subject, event, year, scope, and conditions before comparing. Different years, audiences, or conditions can be context_difference rather than potential_conflict.
 2. agreement means compatible claims about the same matter. potential_conflict means seemingly incompatible claims under the same context; mention possible updates or missing context without inventing a cause or deciding which source is wrong.
-3. An omission is not a contradiction. Use single_source_claim if a claim is identified in only one source. Do not infer that the other source rejects it.
+3. Split independent claims before assigning relationships, even when they concern the same topic. If both sources share a claim and one adds another claim, return an agreement for the shared claim and a single_source_claim for the addition. Additional information alone is not a context_difference. An omission is not a contradiction; do not infer that the other source rejects a claim it does not mention.
 4. Use needs_review when the available context prevents a reliable relationship judgment. Explain the uncertainty.
 5. agreement, potential_conflict, and context_difference require evidence from BOTH sources. single_source_claim requires evidence from only the source making the claim. needs_review requires at least one relevant excerpt.
 6. Every quote must appear verbatim in its specified input, including punctuation. Do not paraphrase, translate, add ellipses, or combine separate passages inside a quote. Select concise passages that actually support the explanation.
