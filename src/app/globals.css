@@ -69,13 +69,19 @@ h1 { font-size: clamp(29px, 2.5vw, 37px); line-height: 1.22; font-weight: 520; l
 .sources-grid { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; min-width: 0; min-height: 0; }
 .source-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .source-panel + .source-panel { border-left: 1px solid var(--border); }
-.source-header { min-height: 76px; display: flex; align-items: center; justify-content: space-between; padding: 0 23px; border-bottom: 1px solid var(--line); }
-.source-identity { display: flex; align-items: center; gap: 11px; }
+.source-header { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 0 23px; border-bottom: 1px solid var(--line); }
+.source-identity { display: flex; align-items: center; gap: 11px; min-width: 0; flex: 1; }
+.source-identity > div { min-width: 0; }
 .source-letter { height: 27px; width: 25px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: #edf1e9; color: #506244; border: 1px solid #e1e7d9; font-size: 11px; font-weight: 600; border-radius: 3px; }
 .source-b .source-letter, .evidence-b .source-letter { background: #f4f0e8; border-color: #e9e1d4; color: #8c7653; }
 .source-title { font-size: 13px; font-weight: 600; cursor: text; }
-.source-caption { font-size: 10px; color: #747c6b; margin-top: 3px; letter-spacing: .1px; }
-.source-file-icon { color: #afb6a9; }
+.source-caption { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 10px; color: #747c6b; margin-top: 3px; letter-spacing: .1px; }
+.source-filename { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-file-edited { flex-shrink: 0; font-size: 9px; color: #8b947f; }
+.source-import-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 30px; padding: 4px 7px; flex-shrink: 0; border-radius: 4px; background: transparent; color: #697b5d; font-size: 11px; transition: background 140ms, color 140ms; }
+.source-import-button:hover:not(:disabled) { color: var(--accent); background: #eff3e9; }
+.source-import-button:disabled { opacity: .45; }
+.source-import-error { padding: 10px 22px; border-bottom: 1px solid #e8ddca; background: #fcf8f1; color: #926a42; font-size: 11px; line-height: 1.6; }
 .source-input { display: block; width: 100%; min-height: 0; resize: none; flex: 1; padding: 23px 25px; border: 0; border-radius: 0; background: var(--surface); color: #373f36; font-family: var(--font-sans); font-size: 14px; line-height: 1.85; letter-spacing: .04px; overflow-y: auto; transition: background 140ms; }
 .source-input::placeholder { color: #737b6c; opacity: 1; }
 .source-input:focus { outline: none; background: #fdfefa; box-shadow: inset 0 0 0 1px #a5b59d; }

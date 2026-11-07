@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, CircleAlert, FlaskConical, LoaderCircle, RotateCcw, X } from "lucide-react";
 import { FindingsPanel } from "./findings-panel";
-import { SourcePanel } from "./source-panel";
+import { SourcePanel, type ImportedSourceFile } from "./source-panel";
 import { MAX_SOURCE_LENGTH, type ComparisonResult, type SourceId } from "@/lib/comparison-schema";
 import { example } from "@/lib/example";
 
@@ -19,6 +19,8 @@ const connectionLabels: Record<Connection, string> = {
 
 export function ComparisonWorkspace() {
   const [sources, setSources] = useState({ sourceA: "", sourceB: "" });
+  const [sourceFiles, setSourceFiles] = useState<Record<SourceId, ImportedSourceFile | null>>({ A: null, B: null });
+  const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ComparisonResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -45,14 +47,19 @@ export function ComparisonWorkspace() {
     return () => clearInterval(timer);
   }, [loading]);
 
+  const busy = loading || importing;
   const hasInput = Boolean(sources.sourceA || sources.sourceB);
   const canCompare = Boolean(sources.sourceA.trim() && sources.sourceB.trim())
     && sources.sourceA.length <= MAX_SOURCE_LENGTH
     && sources.sourceB.length <= MAX_SOURCE_LENGTH
-    && !loading;
+    && !busy;
 
-  function updateSource(source: SourceId, value: string) {
+  function updateSource(source: SourceId, value: string, fileName?: string) {
     setSources((current) => ({ ...current, [source === "A" ? "sourceA" : "sourceB"]: value }));
+    setSourceFiles((current) => ({
+      ...current,
+      [source]: fileName !== undefined ? { name: fileName, edited: false } : current[source] ? { ...current[source], edited: true } : null,
+    }));
     setResult(null);
     setError(null);
     setIsExample(false);
@@ -60,6 +67,7 @@ export function ComparisonWorkspace() {
 
   function loadExample() {
     setSources({ ...example });
+    setSourceFiles({ A: null, B: null });
     setResult(null);
     setError(null);
     setIsExample(true);
@@ -67,6 +75,7 @@ export function ComparisonWorkspace() {
 
   function clearWorkspace() {
     setSources({ sourceA: "", sourceB: "" });
+    setSourceFiles({ A: null, B: null });
     setResult(null);
     setError(null);
     setIsExample(false);
@@ -135,8 +144,8 @@ export function ComparisonWorkspace() {
               <p className="workspace-description">Find common ground, understand differences, and trace the evidence.</p>
             </div>
             <div className="workspace-actions">
-              {hasInput && <button type="button" className="button button-clear" onClick={clearWorkspace} disabled={loading} title="Clear both sources"><RotateCcw size={14} aria-hidden="true" /><span>Clear</span></button>}
-              <button type="button" className="button button-secondary" onClick={loadExample} disabled={loading}><FlaskConical size={15} strokeWidth={1.7} aria-hidden="true" />Try Example</button>
+              {hasInput && <button type="button" className="button button-clear" onClick={clearWorkspace} disabled={busy} title="Clear both sources"><RotateCcw size={14} aria-hidden="true" /><span>Clear</span></button>}
+              <button type="button" className="button button-secondary" onClick={loadExample} disabled={busy}><FlaskConical size={15} strokeWidth={1.7} aria-hidden="true" />Try Example</button>
               <button type="submit" className="button button-primary" disabled={!canCompare} title="Compare sources (Ctrl / ⌘ + Enter)">{loading ? <LoaderCircle size={16} className="spinner" aria-hidden="true" /> : null}{loading ? "Comparing…" : "Compare Sources"}{!loading && <ArrowRight size={16} aria-hidden="true" />}</button>
             </div>
           </div>
@@ -147,8 +156,8 @@ export function ComparisonWorkspace() {
 
           <div className={`workspace-grid${result ? " has-results" : ""}`}>
             <div className="sources-grid">
-              <SourcePanel source="A" value={sources.sourceA} onChange={(value) => updateSource("A", value)} readOnly={loading} inputRef={sourceARef} />
-              <SourcePanel source="B" value={sources.sourceB} onChange={(value) => updateSource("B", value)} readOnly={loading} inputRef={sourceBRef} />
+              <SourcePanel source="A" value={sources.sourceA} onChange={(value) => updateSource("A", value)} onImport={(value, fileName) => updateSource("A", value, fileName)} onImportingChange={setImporting} importedFile={sourceFiles.A} readOnly={busy} inputRef={sourceARef} />
+              <SourcePanel source="B" value={sources.sourceB} onChange={(value) => updateSource("B", value)} onImport={(value, fileName) => updateSource("B", value, fileName)} onImportingChange={setImporting} importedFile={sourceFiles.B} readOnly={busy} inputRef={sourceBRef} />
             </div>
             <FindingsPanel result={result} loading={loading} elapsedSeconds={elapsedSeconds} onLocate={locateExcerpt} />
           </div>
@@ -160,7 +169,7 @@ export function ComparisonWorkspace() {
         </form>
       </main>
 
-      <footer className="app-footer"><span className="version-label">SourceLens <span>V0.1</span></span><p>Sources are sent to your configured AI provider. This workspace clears on refresh.</p><a href="https://github.com/sx933229xiao-droid/sourcelens-evidence" target="_blank" rel="noreferrer">Project on GitHub <ArrowRight size={12} aria-hidden="true" /></a></footer>
+      <footer className="app-footer"><span className="version-label">SourceLens <span>V0.2</span></span><p>Sources are sent to your configured AI provider. This workspace clears on refresh.</p><a href="https://github.com/sx933229xiao-droid/sourcelens-evidence" target="_blank" rel="noreferrer">Project on GitHub <ArrowRight size={12} aria-hidden="true" /></a></footer>
       <span className="sr-only" role="status" aria-live="polite">{result ? `Comparison complete. ${result.findings.length} findings with matching source excerpts.` : ""}</span>
     </div>
   );

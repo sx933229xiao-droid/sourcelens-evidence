@@ -16,13 +16,14 @@ Instead of producing only a general AI summary, SourceLens aims to identify agre
 
 ## Development Status
 
-**V0.1 running locally — result-reading improvements verified November 7, 2026.**
+**V0.2 running locally — TXT and Markdown import verified November 7, 2026.**
 
 The Next.js application runs locally and its production build passes. On November 7, a real NVIDIA-hosted model call completed through **Try Example → Compare Sources → Findings → Original Evidence**. The local provider configuration uses `https://integrate.api.nvidia.com/v1` with `nvidia/nemotron-3.5-lightning-30b-a3b`; the API key is kept only in the Git-ignored local environment file.
 
 ### Implemented
 
-- Two plain-text sources, up to 10,000 characters each.
+- Two editable plain-text sources, up to 10,000 characters each, with paste and local UTF-8 `.txt` / `.md` import.
+- An **Import** button in each source panel, the imported file name, and an **Edited** marker after changing imported text. Reimporting the same file restores its original content; Clear and Try Example reset file labels.
 - A fictional **Try Example** that fills the inputs; it does not supply precomputed results.
 - One server-side request to an OpenAI-compatible Chat Completions API per comparison.
 - Five relationships: Agreement, Potential Conflict, Context Difference, Single-Source Claim, and Needs Review.
@@ -39,6 +40,7 @@ The Next.js application runs locally and its production build passes. On Novembe
 - A real-model browser comparison of the fictional competition example: the deadline was marked as a potential conflict, individual eligibility as an agreement, and team eligibility as a single-source claim from Source B.
 - Expansion of original excerpts and **Locate in source**, including selection of the exact individual-eligibility sentence in Source A.
 - A V0.1 live comparison retained the three expected findings. Desktop findings width increased from 35% before analysis to 45% afterward; the narrow-screen result view remained a single column without horizontal overflow.
+- V0.2 browser operation: imported a TXT with Chinese text and Windows line endings into Source A, imported Markdown into Source B, edited imported text, and reimported the same file. The comparison button remained available with valid sources, and the narrow-screen import controls did not cause horizontal overflow.
 
 This verifies the complete AI-to-evidence workflow for this example; it does not establish accuracy across arbitrary documents or every relationship category. No precomputed comparison results are used.
 
@@ -74,6 +76,8 @@ npm run dev
 
 Open **http://127.0.0.1:3000** (or the port printed by Next.js). Click **Try Example**, then **Compare Sources**. A configured status means the environment variables are present; only a successful comparison confirms a working provider connection. Restart the server after changing AI configuration.
 
+To use a local source, click **Import** in Source A or Source B and choose a UTF-8 `.txt` or `.md` file. Its text fills the existing editor and its name appears in the panel header. Markdown remains plain text, ready to compare. You can continue editing; the file on disk is not changed. Windows line endings are normalized to the editor's line endings so excerpt location continues to use the displayed text. Empty or oversized files show a panel message without replacing the current source.
+
 For a production build and local production server:
 
 ```powershell
@@ -93,13 +97,13 @@ Analysis is tied to the submitted text: inputs are locked during a request, and 
 
 ## Data and Credentials
 
-The app has no database, accounts, or document history. Inputs and results stay in the current page's memory and clear on refresh. Source text is sent to your configured AI provider; the provider's own data policies apply. Application code does not log complete source text.
+The app has no database, accounts, or document history. Inputs and results stay in the current page's memory and clear on refresh. Imported files are read in the browser, without uploading the file to the app server. Only clicking **Compare Sources** sends the current source text to your configured AI provider; the provider's own data policies apply. Application code does not log complete source text.
 
 API credentials are used only on the server. `.env.local` and other real environment files are ignored by Git; `.env.example` contains placeholders only. Never add credentials with a `NEXT_PUBLIC_` prefix or commit a real API key.
 
 ## Current Limits
 
-V0 accepts two pasted texts only. File uploads, URL fetching, PDF parsing, persistent projects, exports, and external fact checking are not implemented. AI can miss claims or misclassify relationships, and exact-quote validation can omit otherwise useful findings if the model alters their quotations. Review the original sources before relying on a conclusion.
+V0.2 accepts two texts, pasted or imported from UTF-8 TXT / Markdown files, with up to 10,000 characters each. URL fetching, PDF / Word import, persistent projects, exports, and external fact checking are not implemented. AI can miss claims or misclassify relationships, and exact-quote validation can omit otherwise useful findings if the model alters their quotations. Review the original sources before relying on a conclusion.
 
 ## Implementation
 
