@@ -63,7 +63,8 @@ For this non-streaming request, the wait before headers can include connection s
 Use Node.js 22 and npm. In PowerShell:
 
 ```powershell
-Set-Location 'W:\CodeX HKSBS\sourcelens-evidence'
+git clone https://github.com/sx933229xiao-droid/sourcelens-evidence.git
+Set-Location sourcelens-evidence
 npm ci
 Copy-Item .env.example .env.local
 ```
@@ -142,4 +143,4 @@ The V0 implementation is pre-hackathon work completed on November 6, 2026, start
 
 Maintained by an independent developer.
 
-The formal repository is `W:\CodeX HKSBS\sourcelens-evidence`. Temporary files and local development logs belong in `W:\CodeX HKSXMCSK\SourceLens`; generated dependencies and Next.js build output remain in their standard Git-ignored project directories.
+Develop from a local clone using the setup instructions above. Keep credentials, generated dependencies, build output, logs, and temporary files out of version control.
