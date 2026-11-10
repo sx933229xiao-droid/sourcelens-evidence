@@ -144,3 +144,5 @@ The V0 implementation is pre-hackathon work completed on November 6, 2026, start
 Maintained by an independent developer.
 
 Develop from a local clone using the setup instructions above. Keep credentials, generated dependencies, build output, logs, and temporary files out of version control.
+
+For AI-assisted continuation, start with [AGENTS.md](AGENTS.md). When resuming an existing checkout, reuse its dependencies and `.env.local`; the clone and environment-copy steps above are for first-time setup.
