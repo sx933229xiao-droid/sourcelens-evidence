@@ -4,7 +4,7 @@
 
 SourceLens is an independently developed AI workspace for comparing claims across two sources and tracing findings back to their original evidence. It is built for students, researchers, and creators who need to check what different sources actually say.
 
-Paste text or import local TXT / Markdown files, run an AI comparison, and open a finding to inspect its original quotations. SourceLens organizes agreements, potential conflicts, context differences, single-source claims, and statements that need review.
+Create a local research project, paste text or import TXT / Markdown files, run an AI comparison, and open a finding to inspect its original quotations. Return to saved projects without repeating the analysis, then export the findings and evidence as Markdown. SourceLens organizes agreements, potential conflicts, context differences, single-source claims, and statements that need review.
 
 ## Demo
 
@@ -24,12 +24,16 @@ AI is used to compare the meaning of differently worded claims and explain diffe
 
 ## Development Status
 
-**V0.2 running locally — TXT and Markdown import verified November 7, 2026.**
+**V0.3 running locally — local research projects, autosave, analysis reuse, and Markdown export.**
 
-The Next.js application runs locally and its production build passes. On November 7, a real NVIDIA-hosted model call completed through **Try Example → Compare Sources → Findings → Original Evidence**. The local provider configuration uses `https://integrate.api.nvidia.com/v1` with `nvidia/nemotron-3.5-lightning-30b-a3b`; the API key is kept only in the Git-ignored local environment file.
+The Next.js application runs locally and its production build passes. On November 10, 2026, a real NVIDIA-hosted model call completed through **Try Example → Compare Sources → Findings → Original Evidence**, and a Markdown report was downloaded. The local provider configuration uses `https://integrate.api.nvidia.com/v1` with `nvidia/nemotron-3.5-lightning-30b-a3b`; the API key is kept only in the Git-ignored local environment file. V0.3 retains the existing model, inference parameters, prompt, and evidence-validation rules. The demo image above records the earlier V0.2 comparison interface.
 
 ### Implemented
 
+- Create, rename, switch, and delete local research projects from a compact toolbar. Each project contains two sources and its latest successful analysis.
+- Native IndexedDB storage with 500ms text autosave, immediate saves for imports and analysis, and submission of pending changes before switching projects. The interface distinguishes saving, saved, and failed writes.
+- Restore source text, file names, Edited markers, Findings, omitted-finding counts, and analysis time without calling AI again.
+- Markdown reports containing all findings, relationship counts, source names, and verbatim evidence, independent of the on-screen relationship filter.
 - Two editable plain-text sources, up to 10,000 characters each, with paste and local UTF-8 `.txt` / `.md` import.
 - An **Import** button in each source panel, the imported file name, and an **Edited** marker after changing imported text. Reimporting the same file restores its original content; Clear and Try Example reset file labels.
 - A fictional **Try Example** that fills the inputs; it does not supply precomputed results.
@@ -42,6 +46,10 @@ The Next.js application runs locally and its production build passes. On Novembe
 
 ### Verified for this delivery
 
+- V0.3: project creation and renaming, loading the example into an empty named project without an overwrite confirmation, and a real NVIDIA comparison returning three findings in about 39.9 seconds.
+- V0.3: original-evidence location and a downloaded Markdown report containing all three findings while the interface displayed only Potential conflict.
+- V0.3: targeted checks preserving cached Findings, a nonzero `omittedFindings` value, analysis time, file metadata, and oversized drafts exactly; report checks for all five relationship counts and literal Markdown evidence. No test framework was added.
+- A complete V0.3 browser regression pass for refresh, switching, deletion, and file import remains outstanding; the checks above do not claim that coverage.
 - Production build, including TypeScript checking.
 - Browser operation of source inputs, example loading, and missing-configuration feedback.
 - An inline check that valid findings survive alongside invalid citations, with no separate test framework or test directory.
@@ -102,22 +110,37 @@ SourceLens compares statements rather than deciding objective truth. Different d
 
 Every displayed quote must be an exact substring of its corresponding submitted source. Agreement, Potential Conflict, and Context Difference require evidence from both sources. An invalid quote or invalid structure removes that finding, and the interface reports the number omitted. Matching an excerpt verifies its presence in the input, **not** the truth of the claim or the correctness of the AI explanation.
 
-Analysis is tied to the submitted text: inputs are locked during a request, and editing either source clears previous results. A comparison times out after 60 seconds and can be retried manually.
+Analysis is tied to the submitted text: inputs and project operations are locked during a request, and editing either source clears its previous analysis. Reopening a saved project does not repeat the AI call or change its findings, omitted count, or analysis time. When unchanged sources are explicitly compared again, a failed request preserves the last successful result. A comparison times out after 60 seconds and can be retried manually.
+
+## Local Research Projects and Reports
+
+Use **New Project** to start a separate comparison, **Rename** to name it, and the project selector to return to an earlier one. **Delete project** removes its local record after confirmation. An untouched initial blank workspace is not stored; explicitly created or named projects are retained even when empty.
+
+Text edits save after a 500ms pause. Imports, successful analyses, renaming, and confirmed Clear / Try Example actions save immediately. Switching projects submits pending edits first. Wait for **Saved locally** before refreshing or closing; unsaved changes trigger a leave-page warning, and a failed save keeps the current data visible with a **Retry** action.
+
+**Clear** keeps the project but removes its sources and analysis. **Try Example** replaces them with the fictional example. These actions ask for confirmation only when source content or an analysis would be overwritten. Editing a source invalidates the existing analysis; older source versions and analysis history are not retained.
+
+**Export Markdown** downloads the full current analysis, including project and source names, the original analysis time, all five relationship counts, Findings, corresponding original evidence, and the omitted-finding count. It exports all findings regardless of the selected relationship filter. Full source documents are not appended, and exporting never calls AI.
 
 ## Data and Credentials
 
-The app has no database, accounts, or document history. Inputs and results stay in the current page's memory and clear on refresh. Imported files are read in the browser, without uploading the file to the app server. Only clicking **Compare Sources** sends the current source text to your configured AI provider; the provider's own data policies apply. Application code does not log complete source text.
+Projects are stored in this browser's IndexedDB, without a cloud database or accounts. Only current editor text, file names and Edited markers, the latest analysis, and necessary project metadata are retained. Original files, old versions, raw provider responses, and generated reports are not stored. Imported files are read in the browser, without uploading the file to the app server. Only clicking **Compare Sources** sends the current source text to your configured AI provider; the provider's own data policies apply. Application code does not log complete source text.
+
+Local projects belong to the browser profile and exact site origin, including the port: `localhost` and `127.0.0.1` are separate storage locations. Clearing site data, private browsing, or browser storage eviction can remove saved projects. Use a consistent address and export useful reports. V0.3 is intended for editing in one tab and does not merge concurrent changes from multiple tabs or sync across devices. Projects have no arbitrary count limit or automatic expiration; delete unwanted projects to release their records.
 
 API credentials are used only on the server. `.env.local` and other real environment files are ignored by Git; `.env.example` contains placeholders only. Never add credentials with a `NEXT_PUBLIC_` prefix or commit a real API key.
 
 ## Current Limits
 
-V0.2 accepts two texts, pasted or imported from UTF-8 TXT / Markdown files, with up to 10,000 characters each. URL fetching, PDF / Word import, persistent projects, exports, and external fact checking are not implemented. AI can miss claims or misclassify relationships, and exact-quote validation can omit otherwise useful findings if the model alters their quotations. Review the original sources before relying on a conclusion.
+V0.3 compares two texts per project, pasted or imported from UTF-8 TXT / Markdown files, with up to 10,000 characters each. In-progress editor drafts may be saved above the comparison limit, but must be shortened before comparing. URL fetching, PDF / Word import, analysis history, project backup/import, and external fact checking are not implemented. Markdown reports are readable exports, not restorable project backups. AI can miss claims or misclassify relationships, and exact-quote validation can omit otherwise useful findings if the model alters their quotations. Review the original sources before relying on a conclusion.
 
 ## Implementation
 
 - Next.js App Router, React, TypeScript, Tailwind CSS, and custom CSS.
 - React component state for the workspace; Zod for input and per-finding validation.
+- Native IndexedDB for local projects; no database or state-management dependency.
+- `src/lib/project-store.ts`: project records and local storage operations.
+- `src/lib/markdown-report.ts`: Markdown report generation.
 - `src/app/api/compare/route.ts`: comparison endpoint.
 - `src/lib/llm.ts`: server-only provider call and prompt.
 - `src/lib/comparison-schema.ts`: types, validation, and exact-quote checks.

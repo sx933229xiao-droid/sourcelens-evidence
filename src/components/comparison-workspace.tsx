@@ -3,9 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, CircleAlert, FlaskConical, LoaderCircle, RotateCcw, X } from "lucide-react";
 import { FindingsPanel } from "./findings-panel";
-import { SourcePanel, type ImportedSourceFile } from "./source-panel";
+import { SourcePanel } from "./source-panel";
+import { ProjectToolbar, type SaveState } from "./project-toolbar";
 import { MAX_SOURCE_LENGTH, type ComparisonResult, type SourceId } from "@/lib/comparison-schema";
 import { example } from "@/lib/example";
+import { deleteProject, getActiveProjectId, getProject, listProjects, saveProject, setActiveProjectId, type ProjectSummary, type ResearchProject } from "@/lib/project-store";
+import { buildMarkdownReport, reportFileName } from "@/lib/markdown-report";
 
 type Connection = "checking" | "configured" | "connected" | "missing" | "unavailable";
 
@@ -17,18 +20,144 @@ const connectionLabels: Record<Connection, string> = {
   unavailable: "AI status unavailable",
 };
 
+function newDraft(name = "Untitled project"): ResearchProject {
+  return { id: crypto.randomUUID(), name, updatedAt: Date.now(), sources: { sourceA: "", sourceB: "" }, sourceFiles: { A: null, B: null }, analysis: null, isExample: false };
+}
+
+function projectSummary(project: ResearchProject): ProjectSummary {
+  return { id: project.id, name: project.name, updatedAt: project.updatedAt };
+}
+
+function includeProject(projects: ProjectSummary[], project: ResearchProject): ProjectSummary[] {
+  return [...projects.filter((item) => item.id !== project.id), projectSummary(project)].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+async function readWorkspace() {
+  const [projects, activeId] = await Promise.all([listProjects(), getActiveProjectId()]);
+  const id = projects.find((item) => item.id === activeId)?.id ?? projects[0]?.id;
+  const project = id ? await getProject(id) : null;
+  return { projects, project };
+}
+
 export function ComparisonWorkspace() {
-  const [sources, setSources] = useState({ sourceA: "", sourceB: "" });
-  const [sourceFiles, setSourceFiles] = useState<Record<SourceId, ImportedSourceFile | null>>({ A: null, B: null });
+  const [project, setProject] = useState<ResearchProject | null>(null);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [restoring, setRestoring] = useState(true);
+  const [transitioning, setTransitioning] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>("restoring");
+  const [storageError, setStorageError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<ComparisonResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [isExample, setIsExample] = useState(false);
   const [connection, setConnection] = useState<Connection>("checking");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const projectRef = useRef<ResearchProject | null>(null);
+  const dirtyRef = useRef(false);
+  const saveTimer = useRef<number | null>(null);
+  const pendingSave = useRef<Promise<void> | null>(null);
+  const deletingProjectId = useRef<string | null>(null);
   const sourceARef = useRef<HTMLTextAreaElement>(null);
   const sourceBRef = useRef<HTMLTextAreaElement>(null);
+
+  const sources = project?.sources ?? { sourceA: "", sourceB: "" };
+  const sourceFiles = project?.sourceFiles ?? { A: null, B: null };
+  const result = project?.analysis?.result ?? null;
+  const isExample = project?.isExample ?? false;
+
+  function adoptProject(next: ResearchProject, saved: boolean) {
+    cancelSaveTimer();
+    projectRef.current = next;
+    dirtyRef.current = false;
+    setProject(next);
+    setSaveState(saved ? "saved" : "idle");
+    setStorageError(null);
+    setError(null);
+    setElapsedSeconds(0);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    readWorkspace().then((workspace) => {
+      if (cancelled) return;
+      setProjects(workspace.projects);
+      adoptProject(workspace.project ?? newDraft(), Boolean(workspace.project));
+    }).catch((cause) => {
+      if (cancelled) return;
+      adoptProject(newDraft(), false);
+      setSaveState("error");
+      setStorageError(cause instanceof Error ? cause.message : "Local saving is unavailable. You can still work in this page.");
+    }).finally(() => { if (!cancelled) setRestoring(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  function cancelSaveTimer() {
+    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+  }
+
+  function persist(snapshot: ResearchProject): Promise<void> {
+    cancelSaveTimer();
+    // IndexedDB serializes its own transactions. Keep only the latest pending save;
+    // each write owns its captured project ID and never replaces current page state.
+    if (projectRef.current?.id !== snapshot.id || deletingProjectId.current === snapshot.id) return Promise.resolve();
+    const operation: Promise<void> = (async () => {
+      await saveProject(snapshot);
+      if (projectRef.current?.id === snapshot.id) await setActiveProjectId(snapshot.id);
+      setProjects((current) => includeProject(current, snapshot));
+      if (projectRef.current === snapshot) {
+        dirtyRef.current = false;
+        setSaveState("saved");
+        setStorageError(null);
+      }
+    })().catch((cause) => {
+      if (projectRef.current === snapshot) {
+        setSaveState("error");
+        setStorageError(cause instanceof Error ? cause.message : "Your changes could not be saved locally. Please retry.");
+      }
+      throw cause;
+    }).finally(() => { if (pendingSave.current === operation) pendingSave.current = null; });
+    pendingSave.current = operation;
+    return operation;
+  }
+
+  async function flushSave() {
+    cancelSaveTimer();
+    if (pendingSave.current) await pendingSave.current.catch(() => {});
+    const current = projectRef.current;
+    if (current && dirtyRef.current) await persist(current);
+  }
+
+  function changeProject(next: ResearchProject): ResearchProject {
+    const updated = { ...next, updatedAt: Date.now() };
+    projectRef.current = updated;
+    dirtyRef.current = true;
+    setProject(updated);
+    setSaveState("saving");
+    return updated;
+  }
+
+  useEffect(() => {
+    if (restoring || !project || !dirtyRef.current) return;
+    saveTimer.current = window.setTimeout(() => {
+      if (projectRef.current === project && dirtyRef.current) void persist(project).catch(() => {});
+    }, 500);
+    return cancelSaveTimer;
+  }, [project, restoring]);
+
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirtyRef.current && !pendingSave.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const onVisibilityChange = () => { if (document.visibilityState === "hidden") void flushSave().catch(() => {}); };
+    window.addEventListener("beforeunload", beforeUnload);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     fetch("/api/status", { cache: "no-store" })
@@ -47,7 +176,7 @@ export function ComparisonWorkspace() {
     return () => clearInterval(timer);
   }, [loading]);
 
-  const busy = loading || importing;
+  const busy = loading || importing || restoring || transitioning;
   const hasInput = Boolean(sources.sourceA || sources.sourceB);
   const canCompare = Boolean(sources.sourceA.trim() && sources.sourceB.trim())
     && sources.sourceA.length <= MAX_SOURCE_LENGTH
@@ -55,50 +184,147 @@ export function ComparisonWorkspace() {
     && !busy;
 
   function updateSource(source: SourceId, value: string, fileName?: string) {
-    setSources((current) => ({ ...current, [source === "A" ? "sourceA" : "sourceB"]: value }));
-    setSourceFiles((current) => ({
+    const current = projectRef.current;
+    if (!current || loading || restoring || transitioning) return;
+    const existingFile = current.sourceFiles[source];
+    const updated = changeProject({
       ...current,
-      [source]: fileName !== undefined ? { name: fileName, edited: false } : current[source] ? { ...current[source], edited: true } : null,
-    }));
-    setResult(null);
+      sources: { ...current.sources, [source === "A" ? "sourceA" : "sourceB"]: value },
+      sourceFiles: { ...current.sourceFiles, [source]: fileName !== undefined ? { name: fileName, edited: false } : existingFile ? { ...existingFile, edited: true } : null },
+      analysis: null,
+      isExample: false,
+    });
     setError(null);
-    setIsExample(false);
+    if (fileName !== undefined) void persist(updated).catch(() => {});
+  }
+
+  function hasResearchContent(current: ResearchProject): boolean {
+    return Boolean(current.sources.sourceA.trim() || current.sources.sourceB.trim() || current.analysis);
   }
 
   function loadExample() {
-    setSources({ ...example });
-    setSourceFiles({ A: null, B: null });
-    setResult(null);
+    const current = projectRef.current;
+    if (!current || busy) return;
+    if (hasResearchContent(current) && !window.confirm(`Replace the sources and analysis in “${current.name}” with the fictional example?`)) return;
+    const updated = changeProject({ ...current, sources: { ...example }, sourceFiles: { A: null, B: null }, analysis: null, isExample: true });
     setError(null);
-    setIsExample(true);
+    void persist(updated).catch(() => {});
   }
 
   function clearWorkspace() {
-    setSources({ sourceA: "", sourceB: "" });
-    setSourceFiles({ A: null, B: null });
-    setResult(null);
+    const current = projectRef.current;
+    if (!current || busy) return;
+    if (hasResearchContent(current) && !window.confirm(`Clear the sources and analysis in “${current.name}”? The project will be kept.`)) return;
+    const updated = changeProject({ ...current, sources: { sourceA: "", sourceB: "" }, sourceFiles: { A: null, B: null }, analysis: null, isExample: false });
     setError(null);
-    setIsExample(false);
+    void persist(updated).catch(() => {});
     sourceARef.current?.focus();
   }
 
+  async function selectProject(id: string) {
+    if (busy || id === projectRef.current?.id) return;
+    setTransitioning(true);
+    try {
+      await flushSave();
+      const next = await getProject(id);
+      if (!next) throw new Error("This project no longer exists. Refresh the project list and retry.");
+      await setActiveProjectId(id);
+      adoptProject(next, true);
+    } catch (cause) { setStorageError(cause instanceof Error ? cause.message : "The project could not be opened."); }
+    finally { setTransitioning(false); }
+  }
+
+  async function createProject(): Promise<boolean> {
+    if (busy) return false;
+    setTransitioning(true);
+    try {
+      await flushSave();
+      const names = new Set([...projects.map((item) => item.name), projectRef.current?.name]);
+      let name = "Untitled project";
+      for (let index = 2; names.has(name); index++) name = `Untitled project ${index}`;
+      const next = newDraft(name);
+      await saveProject(next);
+      await setActiveProjectId(next.id);
+      setProjects((current) => includeProject(current, next));
+      adoptProject(next, true);
+      return true;
+    } catch (cause) { setStorageError(cause instanceof Error ? cause.message : "A project could not be created."); return false; }
+    finally { setTransitioning(false); }
+  }
+
+  async function renameProject(name: string): Promise<boolean> {
+    const current = projectRef.current;
+    if (!current || busy || !name.trim() || name.trim().length > 80) return false;
+    setTransitioning(true);
+    try {
+      changeProject({ ...current, name: name.trim() });
+      await flushSave();
+      return true;
+    } catch { return false; }
+    finally { setTransitioning(false); }
+  }
+
+  async function removeProject() {
+    const current = projectRef.current;
+    if (!current || busy || !window.confirm(`Delete “${current.name}” and its saved sources and analysis? This cannot be undone.`)) return;
+    setTransitioning(true);
+    deletingProjectId.current = current.id;
+    cancelSaveTimer();
+    try {
+      if (pendingSave.current) await pendingSave.current.catch(() => {});
+      const remaining = projects.filter((item) => item.id !== current.id);
+      const next = remaining[0] ? await getProject(remaining[0].id) : null;
+      await deleteProject(current.id, next?.id ?? null);
+      setProjects(remaining);
+      adoptProject(next ?? newDraft(), Boolean(next));
+    } catch (cause) { setStorageError(cause instanceof Error ? cause.message : "The project could not be deleted."); }
+    finally { deletingProjectId.current = null; setTransitioning(false); }
+  }
+
+  async function retrySaving() {
+    if (busy) return;
+    setTransitioning(true);
+    try {
+      if (dirtyRef.current) await flushSave();
+      else {
+        const workspace = await readWorkspace();
+        setProjects(workspace.projects);
+        adoptProject(workspace.project ?? newDraft(), Boolean(workspace.project));
+      }
+    } catch (cause) { setStorageError(cause instanceof Error ? cause.message : "Local saving is unavailable. Please retry."); }
+    finally { setTransitioning(false); }
+  }
+
+  function exportReport() {
+    const current = projectRef.current;
+    if (!current?.analysis || busy) return;
+    const url = URL.createObjectURL(new Blob([buildMarkdownReport(current)], { type: "text/markdown;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = reportFileName(current.name);
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   async function compare() {
-    if (!canCompare) return;
+    const current = projectRef.current;
+    if (!canCompare || !current) return;
     setLoading(true);
     setElapsedSeconds(0);
     setError(null);
-    setResult(null);
 
     try {
+      await flushSave().catch(() => {});
       const response = await fetch("/api/compare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sources),
+        body: JSON.stringify(current.sources),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "This comparison could not be completed. Please try again.");
-      setResult(payload as ComparisonResult);
+      const updated = changeProject({ ...current, analysis: { result: payload as ComparisonResult, completedAt: Date.now() } });
       setConnection("connected");
+      await persist(updated).catch(() => {});
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The connection was interrupted. Your sources are still here; please try again.");
     } finally {
@@ -131,6 +357,8 @@ export function ComparisonWorkspace() {
       </header>
 
       <main className="main-content">
+        <ProjectToolbar project={project} projects={projects} saveState={saveState} disabled={busy} onSelect={selectProject} onCreate={createProject} onRename={renameProject} onDelete={removeProject} onExport={exportReport} />
+        {storageError && <div className="error-notice storage-notice" role="alert"><CircleAlert size={18} aria-hidden="true" /><div><strong>Local storage needs attention</strong><p>{storageError}</p></div><button type="button" className="storage-retry" disabled={busy} onClick={() => { void retrySaving(); }}>Retry</button></div>}
         <form onSubmit={(event) => { event.preventDefault(); void compare(); }} onKeyDown={(event) => {
           if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && canCompare) {
             event.preventDefault();
@@ -155,7 +383,7 @@ export function ComparisonWorkspace() {
           {error && <div className="error-notice" role="alert"><CircleAlert size={18} aria-hidden="true" /><div><strong>Comparison unavailable</strong><p>{error}</p></div><button type="button" className="dismiss-error" onClick={() => setError(null)} aria-label="Dismiss error"><X size={16} aria-hidden="true" /></button></div>}
 
           <div className={`workspace-grid${result ? " has-results" : ""}`}>
-            <div className="sources-grid">
+            <div className="sources-grid" key={project?.id ?? "restoring"}>
               <SourcePanel source="A" value={sources.sourceA} onChange={(value) => updateSource("A", value)} onImport={(value, fileName) => updateSource("A", value, fileName)} onImportingChange={setImporting} importedFile={sourceFiles.A} readOnly={busy} inputRef={sourceARef} />
               <SourcePanel source="B" value={sources.sourceB} onChange={(value) => updateSource("B", value)} onImport={(value, fileName) => updateSource("B", value, fileName)} onImportingChange={setImporting} importedFile={sourceFiles.B} readOnly={busy} inputRef={sourceBRef} />
             </div>
@@ -169,8 +397,8 @@ export function ComparisonWorkspace() {
         </form>
       </main>
 
-      <footer className="app-footer"><span className="version-label">SourceLens <span>V0.2</span></span><p>Sources are sent to your configured AI provider. This workspace clears on refresh.</p><a href="https://github.com/sx933229xiao-droid/sourcelens-evidence" target="_blank" rel="noreferrer">Project on GitHub <ArrowRight size={12} aria-hidden="true" /></a></footer>
-      <span className="sr-only" role="status" aria-live="polite">{result ? `Comparison complete. ${result.findings.length} findings with matching source excerpts.` : ""}</span>
+      <footer className="app-footer"><span className="version-label">SourceLens <span>V0.3</span></span><p>Projects stay in this browser. Sources are sent to AI only when you compare.</p><a href="https://github.com/sx933229xiao-droid/sourcelens-evidence" target="_blank" rel="noreferrer">Project on GitHub <ArrowRight size={12} aria-hidden="true" /></a></footer>
+      <span className="sr-only" role="status" aria-live="polite">{result && !loading ? `${result.findings.length} findings with matching source excerpts.` : ""}</span>
     </div>
   );
 }

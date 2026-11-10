@@ -10,9 +10,11 @@
 
 ## 产品与当前基线
 
-- 已实现 V0.2：两份文本粘贴与编辑、浏览器本地 UTF-8 TXT/Markdown 导入、文件名及 Edited 标记、真实 AI 对照、五类关系、证据展开和原文定位。
+- 已实现 V0.3：在 V0.2 双资料导入、真实 AI 对照及证据定位上，增加本地研究项目管理、IndexedDB 自动保存、刷新恢复、结果复用和 Markdown 导出。当前会话的浏览器验证范围见 README，勿把实现与完整浏览器验收混为一谈。
 - 产品比较资料中的陈述关系，不裁定客观真伪。信息缺失不等于冲突，不同年份或适用条件应区分。
-- 使用 Next.js App Router、React、TypeScript、Tailwind CSS、自定义 CSS 和 Zod；单体 Web，无数据库、账户、多 Agent 或任务队列。
+- 使用 Next.js App Router、React、TypeScript、Tailwind CSS、自定义 CSS 和 Zod；原生 IndexedDB 仅在浏览器保存项目，无云数据库、账户、多 Agent 或任务队列。
+- 每项目保留两份当前文本、文件名及 Edited 标记、最新成功结果和分析时间。恢复时原样保留 Findings 与 omittedFindings，不重复分析或重新计算遗漏数。编辑资料立即清空分析；不保存原文件、历史版本或原始模型响应。
+- 文本编辑采用 500ms 防抖，写入绑定捕获的项目 ID，切换前提交待保存内容；没有通用任务队列。Clear / Try Example 只在会覆盖当前资料或分析时确认。Markdown 导出全部发现，不受界面筛选影响。
 - AI 为服务端一次非流式 Chat Completions 调用，密钥只在服务端读取。输入为 `{ sourceA, sourceB }`，成功响应包含 `findings` 和 `omittedFindings`。
 - 每份资料最多 10,000 字符。每条发现独立校验结构及逐字引用：过滤无效项、保留有效项；响应不可解析或全部发现不可用时才报错。
 - 保持五类关系：Agreement、Potential Conflict、Context Difference、Single-Source Claim、Needs Review。当前真实示例已验证 Agreement、Potential Conflict 和 Single-Source Claim；另外两类尚未单独实测，也不代表全部场景准确率验证。
@@ -24,6 +26,8 @@
 | 文件 | 职责 |
 | --- | --- |
 | `src/components/comparison-workspace.tsx` | 输入、文件元信息、请求状态、结果失效、原文选中定位 |
+| `src/components/project-toolbar.tsx` | 项目切换、新建、命名、删除、保存状态与导出入口 |
+| `src/lib/project-store.ts`、`src/lib/markdown-report.ts` | 本地项目结构与 IndexedDB、完整 Markdown 报告 |
 | `src/components/source-panel.tsx` | TXT/Markdown 本地导入、换行归一化、输入与文件名显示 |
 | `src/components/findings-panel.tsx` | 关系筛选、发现列表、证据展开 |
 | `src/app/globals.css` | 现有视觉样式与响应式布局 |
