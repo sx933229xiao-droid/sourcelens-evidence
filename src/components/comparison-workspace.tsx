@@ -3,11 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, CircleAlert, FlaskConical, LoaderCircle, RotateCcw, X } from "lucide-react";
 import { FindingsPanel } from "./findings-panel";
-import { SourcePanel } from "./source-panel";
+import { SourcePanel, type ExcerptLocation } from "./source-panel";
 import { ProjectToolbar, type SaveState } from "./project-toolbar";
 import { MAX_SOURCE_LENGTH, type ComparisonResult, type SourceId } from "@/lib/comparison-schema";
 import { example } from "@/lib/example";
-import { deleteProject, getActiveProjectId, getProject, listProjects, saveProject, setActiveProjectId, type ProjectSummary, type ResearchProject } from "@/lib/project-store";
+import { deleteProject, getActiveProjectId, getProject, listProjects, saveProject, setActiveProjectId, type ImportedSourceFile, type ProjectSummary, type ResearchProject } from "@/lib/project-store";
 import { buildMarkdownReport, reportFileName } from "@/lib/markdown-report";
 
 type Connection = "checking" | "configured" | "connected" | "missing" | "unavailable";
@@ -51,6 +51,7 @@ export function ComparisonWorkspace() {
   const [loading, setLoading] = useState(false);
   const [connection, setConnection] = useState<Connection>("checking");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [locatedExcerpt, setLocatedExcerpt] = useState<ExcerptLocation | null>(null);
   const projectRef = useRef<ResearchProject | null>(null);
   const dirtyRef = useRef(false);
   const saveTimer = useRef<number | null>(null);
@@ -73,6 +74,7 @@ export function ComparisonWorkspace() {
     setStorageError(null);
     setError(null);
     setElapsedSeconds(0);
+    setLocatedExcerpt(null);
   }
 
   useEffect(() => {
@@ -183,19 +185,20 @@ export function ComparisonWorkspace() {
     && sources.sourceB.length <= MAX_SOURCE_LENGTH
     && !busy;
 
-  function updateSource(source: SourceId, value: string, fileName?: string) {
+  function updateSource(source: SourceId, value: string, file?: ImportedSourceFile) {
     const current = projectRef.current;
     if (!current || loading || restoring || transitioning) return;
     const existingFile = current.sourceFiles[source];
     const updated = changeProject({
       ...current,
       sources: { ...current.sources, [source === "A" ? "sourceA" : "sourceB"]: value },
-      sourceFiles: { ...current.sourceFiles, [source]: fileName !== undefined ? { name: fileName, edited: false } : existingFile ? { ...existingFile, edited: true } : null },
+      sourceFiles: { ...current.sourceFiles, [source]: file !== undefined ? file : existingFile ? { ...existingFile, edited: true } : null },
       analysis: null,
       isExample: false,
     });
     setError(null);
-    if (fileName !== undefined) void persist(updated).catch(() => {});
+    setLocatedExcerpt(null);
+    if (file !== undefined) void persist(updated).catch(() => {});
   }
 
   function hasResearchContent(current: ResearchProject): boolean {
@@ -207,6 +210,7 @@ export function ComparisonWorkspace() {
     if (!current || busy) return;
     if (hasResearchContent(current) && !window.confirm(`Replace the sources and analysis in “${current.name}” with the fictional example?`)) return;
     const updated = changeProject({ ...current, sources: { ...example }, sourceFiles: { A: null, B: null }, analysis: null, isExample: true });
+    setLocatedExcerpt(null);
     setError(null);
     void persist(updated).catch(() => {});
   }
@@ -216,6 +220,7 @@ export function ComparisonWorkspace() {
     if (!current || busy) return;
     if (hasResearchContent(current) && !window.confirm(`Clear the sources and analysis in “${current.name}”? The project will be kept.`)) return;
     const updated = changeProject({ ...current, sources: { sourceA: "", sourceB: "" }, sourceFiles: { A: null, B: null }, analysis: null, isExample: false });
+    setLocatedExcerpt(null);
     setError(null);
     void persist(updated).catch(() => {});
     sourceARef.current?.focus();
@@ -333,13 +338,8 @@ export function ComparisonWorkspace() {
   }
 
   function locateExcerpt(source: SourceId, quote: string) {
-    const input = source === "A" ? sourceARef.current : sourceBRef.current;
-    if (!input) return;
-    const start = input.value.indexOf(quote);
-    if (start === -1) return;
-    input.focus();
-    input.setSelectionRange(start, start + quote.length);
-    input.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    const text = projectRef.current?.sources[source === "A" ? "sourceA" : "sourceB"];
+    if (text?.includes(quote)) setLocatedExcerpt({ source, quote });
   }
 
   return (
@@ -384,8 +384,8 @@ export function ComparisonWorkspace() {
 
           <div className={`workspace-grid${result ? " has-results" : ""}`}>
             <div className="sources-grid" key={project?.id ?? "restoring"}>
-              <SourcePanel source="A" value={sources.sourceA} onChange={(value) => updateSource("A", value)} onImport={(value, fileName) => updateSource("A", value, fileName)} onImportingChange={setImporting} importedFile={sourceFiles.A} readOnly={busy} inputRef={sourceARef} />
-              <SourcePanel source="B" value={sources.sourceB} onChange={(value) => updateSource("B", value)} onImport={(value, fileName) => updateSource("B", value, fileName)} onImportingChange={setImporting} importedFile={sourceFiles.B} readOnly={busy} inputRef={sourceBRef} />
+              <SourcePanel source="A" value={sources.sourceA} onChange={(value) => updateSource("A", value)} onImport={(value, file) => updateSource("A", value, file)} onImportingChange={setImporting} importedFile={sourceFiles.A} readOnly={busy} inputRef={sourceARef} location={locatedExcerpt?.source === "A" ? locatedExcerpt : null} />
+              <SourcePanel source="B" value={sources.sourceB} onChange={(value) => updateSource("B", value)} onImport={(value, file) => updateSource("B", value, file)} onImportingChange={setImporting} importedFile={sourceFiles.B} readOnly={busy} inputRef={sourceBRef} location={locatedExcerpt?.source === "B" ? locatedExcerpt : null} />
             </div>
             <FindingsPanel result={result} loading={loading} elapsedSeconds={elapsedSeconds} onLocate={locateExcerpt} />
           </div>
@@ -397,7 +397,7 @@ export function ComparisonWorkspace() {
         </form>
       </main>
 
-      <footer className="app-footer"><span className="version-label">SourceLens <span>V0.3</span></span><p>Projects stay in this browser. Sources are sent to AI only when you compare.</p><a href="https://github.com/sx933229xiao-droid/sourcelens-evidence" target="_blank" rel="noreferrer">Project on GitHub <ArrowRight size={12} aria-hidden="true" /></a></footer>
+      <footer className="app-footer"><span className="version-label">SourceLens <span>V0.4</span></span><p>Projects stay in this browser. Sources are sent to AI only when you compare.</p><a href="https://github.com/sx933229xiao-droid/sourcelens-evidence" target="_blank" rel="noreferrer">Project on GitHub <ArrowRight size={12} aria-hidden="true" /></a></footer>
       <span className="sr-only" role="status" aria-live="polite">{result && !loading ? `${result.findings.length} findings with matching source excerpts.` : ""}</span>
     </div>
   );

@@ -1,6 +1,18 @@
 import { z } from "zod";
 import { relationships } from "@/lib/comparison-schema";
 
+const sourceFileSchema = z.object({
+  name: z.string(),
+  edited: z.boolean(),
+  pdf: z.object({
+    pageCount: z.number().int().positive(),
+    fromPage: z.number().int().positive(),
+    toPage: z.number().int().positive(),
+  }).refine((range) => range.fromPage <= range.toPage && range.toPage <= range.pageCount).optional(),
+});
+
+export type ImportedSourceFile = z.infer<typeof sourceFileSchema>;
+
 // Stored results are checked structurally, never re-scored or re-counted on restore.
 export const researchProjectSchema = z.object({
   id: z.string().min(1),
@@ -8,8 +20,8 @@ export const researchProjectSchema = z.object({
   updatedAt: z.number().finite(),
   sources: z.object({ sourceA: z.string(), sourceB: z.string() }),
   sourceFiles: z.object({
-    A: z.object({ name: z.string(), edited: z.boolean() }).nullable(),
-    B: z.object({ name: z.string(), edited: z.boolean() }).nullable(),
+    A: sourceFileSchema.nullable(),
+    B: sourceFileSchema.nullable(),
   }),
   analysis: z.object({
     completedAt: z.number().finite(),

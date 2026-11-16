@@ -150,3 +150,6 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Generated from the installed pdfjs-dist version before dev/build.
+/public/pdfjs/

@@ -4,7 +4,7 @@
 
 SourceLens is an independently developed AI workspace for comparing claims across two sources and tracing findings back to their original evidence. It is built for students, researchers, and creators who need to check what different sources actually say.
 
-Create a local research project, paste text or import TXT / Markdown files, run an AI comparison, and open a finding to inspect its original quotations. Return to saved projects without repeating the analysis, then export the findings and evidence as Markdown. SourceLens organizes agreements, potential conflicts, context differences, single-source claims, and statements that need review.
+Create a local research project, paste text or import TXT / Markdown / text-based PDF files, run an AI comparison, and open a finding to inspect its original quotations. Choose PDF pages and review their text before importing, then switch between reading and editing. Return to saved projects without repeating the analysis, and export the findings and evidence as Markdown. SourceLens organizes agreements, potential conflicts, context differences, single-source claims, and statements that need review.
 
 ## Demo
 
@@ -24,27 +24,40 @@ AI is used to compare the meaning of differently worded claims and explain diffe
 
 ## Development Status
 
-**V0.3 running locally — local research projects, autosave, analysis reuse, and Markdown export.**
+**V0.4 running locally — browser PDF import, page-range previews, reading views, and evidence highlighting.**
 
-The Next.js application runs locally and its production build passes. On November 10, 2026, a real NVIDIA-hosted model call completed through **Try Example → Compare Sources → Findings → Original Evidence**, and a Markdown report was downloaded. The local provider configuration uses `https://integrate.api.nvidia.com/v1` with `nvidia/nemotron-3.5-lightning-30b-a3b`; the API key is kept only in the Git-ignored local environment file. V0.3 retains the existing model, inference parameters, prompt, and evidence-validation rules. The demo image above records the earlier V0.2 comparison interface.
+The Next.js application runs locally and its production build passes. V0.4 PDF import was exercised with real English and Chinese PDFs on November 16, 2026. Existing real NVIDIA results were reused for reading-view evidence checks, with no new AI calls. The local provider configuration uses `https://integrate.api.nvidia.com/v1` with `nvidia/nemotron-3.5-lightning-30b-a3b`; the API key is kept only in the Git-ignored local environment file. V0.4 retains the existing model, inference parameters, prompt, and evidence-validation rules. The demo image above records the earlier V0.2 comparison interface.
 
 ### Implemented
 
+- Browser-local text PDF import up to 50 MB, using a locally served PDF.js Worker. Documents of up to five pages automatically preview all pages; longer documents show their page count first and extract only the range the user requests.
+- An editable PDF preview with inclusive page ranges, progress, cancellation, a live character count, and explicit confirmation. Inputs above 10,000 characters are never silently truncated.
+- Read / Edit source views. **Locate in source** opens the reading view, highlights the exact matching excerpt, and scrolls it into view.
+- PDF file name, Edited status, and selected page range survive project switching and refresh; Markdown reports include this PDF provenance.
 - Create, rename, switch, and delete local research projects from a compact toolbar. Each project contains two sources and its latest successful analysis.
 - Native IndexedDB storage with 500ms text autosave, immediate saves for imports and analysis, and submission of pending changes before switching projects. The interface distinguishes saving, saved, and failed writes.
 - Restore source text, file names, Edited markers, Findings, omitted-finding counts, and analysis time without calling AI again.
 - Markdown reports containing all findings, relationship counts, source names, and verbatim evidence, independent of the on-screen relationship filter.
-- Two editable plain-text sources, up to 10,000 characters each, with paste and local UTF-8 `.txt` / `.md` import.
+- Two editable plain-text sources, up to 10,000 characters each for comparison, with paste, local UTF-8 `.txt` / `.md` import, and text extracted from selected PDF pages.
 - An **Import** button in each source panel, the imported file name, and an **Edited** marker after changing imported text. Reimporting the same file restores its original content; Clear and Try Example reset file labels.
 - A fictional **Try Example** that fills the inputs; it does not supply precomputed results.
 - One server-side request to an OpenAI-compatible Chat Completions API per comparison.
 - Five relationships: Agreement, Potential Conflict, Context Difference, Single-Source Claim, and Needs Review.
-- Findings with a topic, explanation, and expandable original excerpts; **Locate in source** selects the matching text in the input.
+- Findings with a topic, explanation, and expandable original excerpts; **Locate in source** highlights the matching text in the source reading view.
 - Independent validation of findings. Invalid findings are omitted while valid findings remain visible; unreadable responses or responses with no usable findings return an error.
 - Desktop and narrow-screen layouts, loading feedback, input limits, and errors that preserve the source text.
 - After analysis, the desktop workspace gives sources and findings approximately 55:45 of the available width. Result explanations and excerpts use 14px text, with clearer 12px evidence actions.
 
-### Verified for this delivery
+### V0.4 verification — November 16, 2026
+
+- Production build and TypeScript check passed. Targeted checks cover legacy project compatibility, exact analysis restoration, PDF metadata in storage and reports, text-item formatting, and rejection above 50 MB. No test framework was added.
+- The [PDF.js Hello World PDF](https://github.com/mozilla/pdf.js/blob/master/examples/learning/helloworld.pdf) opened as a one-page document, automatically previewed `Hello, world!`, and restored correctly after import and refresh.
+- The [14-page TraceMonkey research paper](https://github.com/mozilla/pdf.js/blob/master/web/compressed.tracemonkey-pldi-09.pdf) initially showed only its page count and range controls, with no extracted preview. Explicit full extraction produced 82,817 characters and disabled import. Selecting page 2 produced 6,332 characters; preview edits, page range, and Edited status persisted after refresh.
+- The [55-page Alibaba Java development handbook](https://github.com/alibaba/p3c/blob/master/Java%E5%BC%80%E5%8F%91%E6%89%8B%E5%86%8C(%E9%BB%84%E5%B1%B1%E7%89%88).pdf) extracted 1,499 characters from PDF page 6, including readable Chinese and code identifiers. A separate PDF.js CJK fixture also extracted successfully.
+- Cancelling an oversized preview or an in-progress extraction preserved the existing sources and left import controls usable. Project switching restored both PDF sources. Read / Edit switching preserved the text exactly. A 375px CSS viewport had no horizontal overflow and kept the confirmation button visible.
+- Saved V0.3 real-model findings restored with all three findings; evidence location highlighted the exact original sentence. A new export of that legacy project was byte-for-byte identical to the original report. This verification made zero new AI calls; a new PDF-to-AI comparison was not run.
+
+### Earlier verification (V0.1–V0.3)
 
 - V0.3: project creation and renaming, loading the example into an empty named project without an overwrite confirmation, and a real NVIDIA comparison returning three findings in about 39.9 seconds.
 - V0.3: original-evidence location and a downloaded Markdown report containing all three findings while the interface displayed only Potential conflict.
@@ -73,7 +86,7 @@ For this non-streaming request, the wait before headers can include connection s
 
 ## Run Locally
 
-Use Node.js 22 and npm. In PowerShell:
+Use Node.js 22.13 or later within the Node.js 22 release line, and npm. In PowerShell:
 
 ```powershell
 git clone https://github.com/sx933229xiao-droid/sourcelens-evidence.git
@@ -100,6 +113,8 @@ Open **http://127.0.0.1:3000** (or the port printed by Next.js). Click **Try Exa
 
 To use a local source, click **Import** in Source A or Source B and choose a UTF-8 `.txt` or `.md` file. Its text fills the existing editor and its name appears in the panel header. Markdown remains plain text, ready to compare. You can continue editing; the file on disk is not changed. Windows line endings are normalized to the editor's line endings so excerpt location continues to use the displayed text. Empty or oversized files show a panel message without replacing the current source.
 
+For PDF files, see the workflow below. The dev and build scripts prepare the PDF.js Worker, CMaps, and standard fonts from the installed package; no external PDF CDN is needed at runtime.
+
 For a production build and local production server:
 
 ```powershell
@@ -117,6 +132,16 @@ Every displayed quote must be an exact substring of its corresponding submitted 
 
 Analysis is tied to the submitted text: inputs and project operations are locked during a request, and editing either source clears its previous analysis. Reopening a saved project does not repeat the AI call or change its findings, omitted count, or analysis time. When unchanged sources are explicitly compared again, a failed request preserves the last successful result. A comparison times out after 60 seconds and can be retried manually.
 
+## PDF Import and Reading
+
+Choose a local text-based `.pdf` file of up to 50 MB from either source's **Import** control. SourceLens loads it locally and reads its page count. Documents with five pages or fewer automatically extract an initial full preview. Longer documents wait for you to select an inclusive **From page / To page** range and click **Extract selected pages**. Text extraction runs page by page in a browser Worker and can be cancelled.
+
+Every PDF requires preview confirmation before replacing a source. Review the reading order, adjust the range, or edit the preview. **Use text** is enabled only when the applied range is valid and its preview contains 1–10,000 characters. Changing page inputs requires extracting that range before importing; extracting again replaces preview edits. Cancel leaves the current source and analysis intact.
+
+PDF page numbers count pages in the file, starting at 1; they may differ from printed page labels. The imported source and Markdown report retain the file name and selected page range. Preview edits and later source edits are marked **Edited**. Page ranges describe the imported material, not a per-excerpt page map.
+
+PDF imports open in **Read** mode. Use **Edit** to revise the same text. **Locate in source** switches to Read, highlights the first exact match, and scrolls to it. View changes do not modify the text, invalidate findings, or write another project version. Exact-quote validation applies to the final imported text. To select different PDF pages later, reimport the original file.
+
 ## Local Research Projects and Reports
 
 Use **New Project** to start a separate comparison, **Rename** to name it, and the project selector to return to an earlier one. **Delete project** removes its local record after confirmation. An untouched initial blank workspace is not stored; explicitly created or named projects are retained even when empty.
@@ -129,21 +154,25 @@ Text edits save after a 500ms pause. Imports, successful analyses, renaming, and
 
 ## Data and Credentials
 
-Projects are stored in this browser's IndexedDB, without a cloud database or accounts. Only current editor text, file names and Edited markers, the latest analysis, and necessary project metadata are retained. Original files, old versions, raw provider responses, and generated reports are not stored. Imported files are read in the browser, without uploading the file to the app server. Only clicking **Compare Sources** sends the current source text to your configured AI provider; the provider's own data policies apply. Application code does not log complete source text.
+Projects are stored in this browser's IndexedDB, without a cloud database or accounts. Only current source text, file names and Edited markers, PDF page-range metadata where applicable, the latest analysis, and necessary project metadata are retained. Original files, unselected PDF text, old versions, raw provider responses, and generated reports are not stored. Imported files are read in the browser, without uploading the file to the app server. PDF parsing resources are released when preview is confirmed or cancelled. Only clicking **Compare Sources** sends the current source text to your configured AI provider; the provider's own data policies apply. Application code does not log complete source text.
 
-Local projects belong to the browser profile and exact site origin, including the port: `localhost` and `127.0.0.1` are separate storage locations. Clearing site data, private browsing, or browser storage eviction can remove saved projects. Use a consistent address and export useful reports. V0.3 is intended for editing in one tab and does not merge concurrent changes from multiple tabs or sync across devices. Projects have no arbitrary count limit or automatic expiration; delete unwanted projects to release their records.
+Local projects belong to the browser profile and exact site origin, including the port: `localhost` and `127.0.0.1` are separate storage locations. Clearing site data, private browsing, or browser storage eviction can remove saved projects. Use a consistent address and export useful reports. V0.4 is intended for editing in one tab and does not merge concurrent changes from multiple tabs or sync across devices. Projects have no arbitrary count limit or automatic expiration; delete unwanted projects to release their records.
 
 API credentials are used only on the server. `.env.local` and other real environment files are ignored by Git; `.env.example` contains placeholders only. Never add credentials with a `NEXT_PUBLIC_` prefix or commit a real API key.
 
 ## Current Limits
 
-V0.3 compares two texts per project, pasted or imported from UTF-8 TXT / Markdown files, with up to 10,000 characters each. In-progress editor drafts may be saved above the comparison limit, but must be shortened before comparing. URL fetching, PDF / Word import, analysis history, project backup/import, and external fact checking are not implemented. Markdown reports are readable exports, not restorable project backups. AI can miss claims or misclassify relationships, and exact-quote validation can omit otherwise useful findings if the model alters their quotations. Review the original sources before relying on a conclusion.
+V0.4 compares two texts per project, with up to 10,000 characters each. It imports UTF-8 TXT / Markdown and text-based PDFs up to 50 MB. Scanned/image-only pages need OCR, and password-protected PDFs are unsupported. Complex columns, tables, and footnotes can affect extraction order; review and edit the preview. SourceLens displays extracted text, not original PDF page images, and does not reconstruct complex layouts. In-progress editor drafts may be saved above the comparison limit, but must be shortened before comparing. URL fetching, Word import, analysis history, project backup/import, and external fact checking are not implemented. Markdown reports are readable exports, not restorable project backups. AI can miss claims or misclassify relationships, and exact-quote validation can omit otherwise useful findings if the model alters their quotations. Review the original sources before relying on a conclusion.
 
 ## Implementation
 
 - Next.js App Router, React, TypeScript, Tailwind CSS, and custom CSS.
 - React component state for the workspace; Zod for input and per-finding validation.
 - Native IndexedDB for local projects; no database or state-management dependency.
+- `pdfjs-dist` 6.5.438, loaded on demand in the browser; matching Worker and text resources served locally.
+- `src/lib/pdf-import.ts`: local document sessions, selected-page extraction, progress, and cleanup.
+- `src/components/pdf-import-dialog.tsx`: page-range selection and editable preview confirmation.
+- `scripts/prepare-pdfjs-assets.mjs`: generated static resources for dev/build, excluded from Git.
 - `src/lib/project-store.ts`: project records and local storage operations.
 - `src/lib/markdown-report.ts`: Markdown report generation.
 - `src/app/api/compare/route.ts`: comparison endpoint.

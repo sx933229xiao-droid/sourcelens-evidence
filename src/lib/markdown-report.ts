@@ -15,7 +15,12 @@ function quoteBlock(quote: string): string {
 export function buildMarkdownReport(project: ResearchProject): string {
   if (!project.analysis) throw new Error("Compare sources before exporting a report.");
   const { result, completedAt } = project.analysis;
-  const sourceName = (source: "A" | "B") => plainText(project.sourceFiles[source]?.name ?? "Pasted text");
+  const sourceName = (source: "A" | "B") => {
+    const file = project.sourceFiles[source];
+    let name = file?.name ?? "Pasted text";
+    if (file?.pdf) name += ` · PDF pages ${file.pdf.fromPage}–${file.pdf.toPage} of ${file.pdf.pageCount}${file.edited ? " · Edited" : ""}`;
+    return plainText(name);
+  };
   const lines = [
     `# ${plainText(project.name)}`,
     "",

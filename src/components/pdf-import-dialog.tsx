@@ -1,0 +1,94 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { FileText, LoaderCircle, X } from "lucide-react";
+import { MAX_SOURCE_LENGTH } from "@/lib/comparison-schema";
+import { AUTO_PREVIEW_PAGE_LIMIT, type PdfSession } from "@/lib/pdf-import";
+import type { ImportedSourceFile } from "@/lib/project-store";
+
+type PdfImportDialogProps = {
+  fileName: string;
+  session: PdfSession;
+  onConfirm: (text: string, file: ImportedSourceFile) => void;
+  onCancel: () => void;
+};
+
+export function PdfImportDialog({ fileName, session, onConfirm, onCancel }: PdfImportDialogProps) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const alive = useRef(true);
+  const autoStarted = useRef(false);
+  const [from, setFrom] = useState("1");
+  const [to, setTo] = useState(String(session.pageCount));
+  const [applied, setApplied] = useState<{ fromPage: number; toPage: number } | null>(null);
+  const [preview, setPreview] = useState("");
+  const [original, setOriginal] = useState("");
+  const [extracting, setExtracting] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [emptyPages, setEmptyPages] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const first = Number(from);
+  const last = Number(to);
+  const validRange = /^\d+$/.test(from) && /^\d+$/.test(to) && first >= 1 && last >= first && last <= session.pageCount;
+  const rangeChanged = !applied || first !== applied.fromPage || last !== applied.toPage;
+  const edited = preview !== original;
+  const overLimit = preview.length > MAX_SOURCE_LENGTH;
+  const canImport = Boolean(applied && validRange && !rangeChanged && !extracting && !error && preview.trim() && !overLimit);
+
+  useEffect(() => {
+    alive.current = true;
+    const dialog = dialogRef.current;
+    dialog?.showModal();
+    return () => { alive.current = false; dialog?.close(); };
+  }, []);
+
+  async function extractRange(fromPage: number, toPage: number) {
+    setExtracting(true);
+    setError(null);
+    setProgress({ done: 0, total: toPage - fromPage + 1 });
+    try {
+      const result = await session.extract(fromPage, toPage, (done, total) => { if (alive.current) setProgress({ done, total }); });
+      if (!alive.current) return;
+      setApplied({ fromPage, toPage });
+      setPreview(result.text);
+      setOriginal(result.text);
+      setEmptyPages(result.emptyPages.length);
+      if (!result.text.trim()) setError("These pages contain no extractable text. Scanned or image-only pages need OCR, which is not supported here.");
+    } catch (cause) {
+      if (alive.current) setError(cause instanceof Error ? cause.message : "These PDF pages could not be read. Try another range or file.");
+    } finally { if (alive.current) setExtracting(false); }
+  }
+
+  useEffect(() => {
+    if (!autoStarted.current && session.pageCount <= AUTO_PREVIEW_PAGE_LIMIT) {
+      autoStarted.current = true;
+      void extractRange(1, session.pageCount);
+    }
+  }, [session]);
+
+  return createPortal(
+    <dialog ref={dialogRef} className="pdf-dialog" aria-labelledby="pdf-import-title" onCancel={(event) => { event.preventDefault(); onCancel(); }}>
+      <form className="pdf-dialog-form" onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); if (canImport && applied) onConfirm(preview, { name: fileName, edited, pdf: { pageCount: session.pageCount, ...applied } }); }}>
+        <header className="pdf-dialog-header">
+          <div><p className="eyebrow"><FileText size={13} aria-hidden="true" />LOCAL PDF IMPORT</p><h2 id="pdf-import-title">Choose what to compare.</h2><p className="pdf-file-name" title={fileName}>{fileName} <span>· {session.pageCount} {session.pageCount === 1 ? "page" : "pages"}</span></p></div>
+          <button type="button" className="pdf-close" onClick={onCancel} aria-label="Cancel PDF import"><X size={18} aria-hidden="true" /></button>
+        </header>
+        <div className="pdf-range-bar">
+          <div className="pdf-range-inputs"><label>From page<input type="number" min={1} max={session.pageCount} step={1} value={from} onChange={(event) => { setFrom(event.target.value); setError(null); }} disabled={extracting} /></label><span aria-hidden="true">—</span><label>To page<input type="number" min={1} max={session.pageCount} step={1} value={to} onChange={(event) => { setTo(event.target.value); setError(null); }} disabled={extracting} /></label></div>
+          <button type="button" className="button button-secondary" disabled={!validRange || extracting} onClick={() => { void extractRange(first, last); }}>{extracting ? <LoaderCircle size={14} className="spinner" aria-hidden="true" /> : null}{extracting ? "Extracting…" : "Extract selected pages"}</button>
+        </div>
+        <div className="pdf-preview-info" role="status">{extracting ? `Extracting page ${progress.done} of ${progress.total} in this range…` : !applied ? "Choose a range, then extract only those pages. Your current source stays here until you confirm." : rangeChanged ? "Apply the new page range before importing. Extracting again replaces preview edits." : `Previewing pages ${applied.fromPage}–${applied.toPage}. Review and edit the text before importing.`}</div>
+        {!validRange && <p className="pdf-message" role="alert">Choose whole page numbers from 1 to {session.pageCount}, with the start before or equal to the end.</p>}
+        {error && <p className="pdf-message" role="alert">{error}</p>}
+        {!error && emptyPages > 0 && <p className="pdf-message">{emptyPages} selected {emptyPages === 1 ? "page has" : "pages have"} no extractable text. Review the preview for missing content.</p>}
+        {edited && !rangeChanged && <p className="pdf-edit-note">Preview edited · the imported source will be marked Edited.</p>}
+        <label className="sr-only" htmlFor="pdf-text-preview">PDF text preview</label>
+        <textarea id="pdf-text-preview" className="pdf-preview" value={preview} disabled={!applied || extracting} spellCheck={false} onChange={(event) => setPreview(event.target.value)} placeholder="Text from your selected pages will appear here. Review the reading order and remove any text you do not need." aria-invalid={overLimit} aria-describedby="pdf-character-count" />
+        <footer className="pdf-dialog-footer">
+          <p id="pdf-character-count" className={overLimit ? "pdf-character-count over-limit" : "pdf-character-count"}>{preview.length.toLocaleString("en-US")} / {MAX_SOURCE_LENGTH.toLocaleString("en-US")} characters{overLimit && <span>Choose fewer pages or shorten the preview. Text is never truncated.</span>}</p>
+          <div><button type="button" className="button button-secondary" onClick={onCancel}>Cancel</button><button type="submit" className="button button-primary" disabled={!canImport}>Use text</button></div>
+        </footer>
+      </form>
+    </dialog>, document.body,
+  );
+}
