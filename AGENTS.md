@@ -10,20 +10,23 @@
 
 ## 产品与当前基线
 
-- 已实现 V0.5：在 V0.4 上解除资料导入、保存与比较的字符限制，支持 PDF 全文提取、长文阅读和可取消的单次全文分析。实际验证范围见 README；不把本地请求检查写成真实 AI 验收。
+- 已实现 V0.6：Workspace 编辑资料与分析，Evidence Explorer 独立导航、并排证据、人工审阅与组合筛选；保留 V0.5 完整导入和可取消单次全文分析。实际验证范围见 README；不把本地请求检查写成真实 AI 验收。
 - 产品比较资料中的陈述关系，不裁定客观真伪。信息缺失不等于冲突，不同年份或适用条件应区分。
 - 使用 Next.js App Router、React、TypeScript、Tailwind CSS、自定义 CSS 和 Zod；原生 IndexedDB 仅在浏览器保存项目，无云数据库、账户、多 Agent 或任务队列。
-- 每项目保留两份当前文本、文件名及 Edited 标记、最新成功结果和分析时间。恢复时原样保留 Findings 与 omittedFindings，不重复分析或重新计算遗漏数。编辑资料立即清空分析；不保存原文件、历史版本或原始模型响应。
+- 每项目保留两份当前文本、文件名及 Edited 标记、最新成功结果和分析时间。恢复时原样保留 Findings 与 omittedFindings，不重复分析或重新计算遗漏数。资料实际变更时清空分析及标注；不保存原文件、历史版本或原始模型响应。
+- 人工标注为 analysis.reviewByFinding 可选稀疏记录，以当前 findings 原始数组索引为键；reviewed / important / note 与 AI result 分离，旧记录默认为无标注。标记立即保存，纯文本备注沿用 500ms 防抖；全部清空时移除空记录，沿用 IndexedDB v1。
+- 有实际人工标记或备注时，首次修改原文、确认导入替换或重新分析前必须提供可取消的确认；无标注不增加确认。新分析成功创建全新 analysis，不继承旧标注；失败和取消保留旧标注。Clear / Try Example / 删除沿用单次确认，准确说明人工内容的去除。
+- 有分析的项目及新成功分析进入 Explorer，无分析进入 Workspace。模式、筛选及选中项只保存在内存；原文定位跳回 Workspace，返回 Explorer 保留选择。标注变化使当前项不匹配时保留详情；主动改筛选条件才选择匹配项。
 - TXT / Markdown 和 PDF 均保留 50 MB 文件大小保护，不设置字符数量上限。PDF 先读取总页数，最多 5 页自动全文预览；长 PDF 可主动提取全文或连续页段。所有 PDF 均需预览确认；取消不修改当前资料或分析。
 - PDF 元信息为 sourceFiles 中可选的 pdf: { pageCount, fromPage, toPage }，兼容旧 IndexedDB v1 记录。仅保存选中文本和范围，不存 PDF、未选中全文或解析中间状态。页码按文件顺序计数；预览删改显示 Edited。
-- 阅读视图与编辑器使用同一文本；Locate in source 切到 Read 并高亮首次逐字匹配，定位/切换视图不写库。旧分析可用于验证阅读交互，无需额外消耗 AI 额度。秒表在独立状态组件更新，资料面板复用稳定回调与 memo，避免无关长文本重渲染。
-- 文本编辑采用 500ms 防抖，写入绑定捕获的项目 ID，切换前提交待保存内容；没有通用任务队列。Clear / Try Example 只在会覆盖当前资料或分析时确认。Markdown 导出全部发现，不受界面筛选影响。
+- 阅读视图与编辑器使用同一文本；View in source 切到 Read 并高亮首次逐字匹配，定位/切换视图不写库。旧分析可用于验证阅读交互，无需额外消耗 AI 额度。秒表在独立状态组件更新，资料面板复用稳定回调与 memo，避免无关长文本重渲染。
+- 文本编辑采用 500ms 防抖，写入绑定捕获的项目 ID，切换前提交待保存内容；没有通用任务队列。Markdown 导出全部发现，不受界面筛选影响；仅为实际有标注的 Finding 添加人工内容，无标注旧项目导出格式保持不变，导出读取最新内存备注。
 - AI 为服务端一次非流式 Chat Completions 调用，密钥只在服务端读取。输入为 `{ sourceA, sourceB }`，成功响应包含 `findings` 和 `omittedFindings`。
 - 比较直接提交两份完整资料，保持通用 OpenAI-compatible 架构；不自动截断、压缩、分块或重试。容量由配置的模型服务决定；明确的容量拒绝保留全文并提示用户编辑或选页，不做特定供应商容量探测。
-- 服务端模型调用超时 240 秒，前端兜底 255 秒；取消贯穿客户端、服务端和供应商请求，并防止迟到响应覆盖。分析期间冻结编辑、导入和项目变更，允许阅读原文及旧结果。失败或取消保留旧分析；原文变更仍立即清空分析。请求状态仅保存在内存中。
+- 服务端模型调用超时 240 秒，前端兜底 255 秒；取消贯穿客户端、服务端和供应商请求，并防止迟到响应覆盖。分析期间冻结编辑、导入、标注和项目变更，允许阅读原文及旧结果、切换模式。失败或取消保留旧分析；原文变更仍清空分析。请求状态仅保存在内存中。
 - 每条发现独立校验结构及逐字引用：过滤无效项、保留有效项；响应不可解析、全部发现不可用或 finish_reason 为 length 时才报错，不把达到输出上限的响应保存为成功分析。
 - 保持五类关系：Agreement、Potential Conflict、Context Difference、Single-Source Claim、Needs Review。当前真实示例已验证 Agreement、Potential Conflict 和 Single-Source Claim；另外两类尚未单独实测，也不代表全部场景准确率验证。
-- 分析完成后桌面资料区/结果区约 55:45；沿用暖白、墨绿、克制的阅读工作台。TXT/Markdown 导入不上传文件，点击 Compare Sources 后才发送编辑区文本。
+- 沿用暖白、墨绿的阅读工作台，英文文案直接说明状态与操作。Workspace 双栏资料、精简结果摘要；Explorer 左侧导航、右侧 A/B 引文和审阅，小屏堆叠。TXT/Markdown 导入不上传文件，点击 Compare Sources 后才发送编辑区文本，不发送人工标注。
 - 云部署尚未完成，Google Cloud Run 仅在评估。不要把 README 的计划、示例或优化建议写成已完成的能力。
 
 ## 关键代码定位
@@ -36,7 +39,9 @@
 | `src/components/source-panel.tsx` | 资料导入、Read/Edit、原文高亮、文件元信息与错误提示 |
 | `src/lib/pdf-import.ts`、`src/components/pdf-import-dialog.tsx` | PDF 页数读取、选页提取、可编辑预览、取消与 Worker 清理 |
 | `scripts/prepare-pdfjs-assets.mjs` | 从安装包准备 public/pdfjs 下的 Worker/CMap/字体；生成资源不提交 |
-| `src/components/findings-panel.tsx` | 关系筛选、发现列表、证据展开 |
+| `src/components/findings-panel.tsx` | Workspace 分析摘要与独立计时 / 取消 |
+| `src/components/evidence-explorer.tsx` | Findings 导航、并排证据、人工审阅、备注与组合筛选 |
+| `src/components/confirmation-dialog.tsx` | 可取消的标注保护及现有覆盖 / 删除确认 |
 | `src/app/globals.css` | 现有视觉样式与响应式布局 |
 | `src/lib/llm.ts` | 服务端供应商调用、提示词、240 秒超时、取消/容量/输出上限错误与最小耗时统计 |
 | `src/lib/comparison-schema.ts` | 共享类型、输入限制、五类关系及独立引用校验 |
@@ -45,7 +50,7 @@
 ## 工作方式与必要验证
 
 - 默认单代理，复用现有实现，只完成当前用户任务。不要额外创建需求文档、测试框架、独立复核或治理流程。
-- 除用户明确要求外，保持模型、推理参数、提示词、校验逻辑和服务端架构不变。V0.5 没有调整推理或输出预算；不自动开展供应商容量、压力测试或真实调用。
+- 除用户明确要求外，保持模型、推理参数、提示词、校验逻辑和服务端架构不变。V0.6 只改用户可见错误文案，未调整模型行为；不自动开展供应商容量、压力测试或真实调用。
 - 文档修改运行 `git diff --check` 并查看差异；应用修改运行 `npm run build`（包含 TypeScript 检查），再实际操作受影响的主流程。已有验证通过后，不重复扩大测试。
 - 仅在任务需要验证 AI 时发起真实调用；可复用仍然打开的真实结果页。Try Example 只填虚构资料，不能用模拟发现代替真实调用。
 - 真实示例的预期关系：截止日期潜在冲突、个人参赛资格一致、团队资格为 B 的单方信息；判断与原文引用要分别检查。

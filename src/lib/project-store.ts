@@ -13,6 +13,14 @@ const sourceFileSchema = z.object({
 
 export type ImportedSourceFile = z.infer<typeof sourceFileSchema>;
 
+const findingReviewSchema = z.object({
+  reviewed: z.boolean(),
+  important: z.boolean(),
+  note: z.string(),
+});
+
+export type FindingReview = z.infer<typeof findingReviewSchema>;
+
 // Stored results are checked structurally, never re-scored or re-counted on restore.
 export const researchProjectSchema = z.object({
   id: z.string().min(1),
@@ -25,6 +33,7 @@ export const researchProjectSchema = z.object({
   }),
   analysis: z.object({
     completedAt: z.number().finite(),
+    reviewByFinding: z.record(z.string(), findingReviewSchema).optional(),
     result: z.object({
       findings: z.array(z.object({
         topic: z.string(),
@@ -41,11 +50,32 @@ export const researchProjectSchema = z.object({
 export type ResearchProject = z.infer<typeof researchProjectSchema>;
 export type ProjectSummary = Pick<ResearchProject, "id" | "name" | "updatedAt">;
 
+export function hasFindingReview(review: FindingReview | undefined): review is FindingReview {
+  return Boolean(review && (review.reviewed || review.important || review.note.trim()));
+}
+
+export function hasAnnotations(analysis: ResearchProject["analysis"]): boolean {
+  return Object.values(analysis?.reviewByFinding ?? {}).some(hasFindingReview);
+}
+
+export function withFindingReview(analysis: NonNullable<ResearchProject["analysis"]>, index: number, patch: Partial<FindingReview>): NonNullable<ResearchProject["analysis"]> {
+  if (!Number.isInteger(index) || index < 0 || index >= analysis.result.findings.length) return analysis;
+  const reviews = { ...analysis.reviewByFinding };
+  const previous = reviews[index] ?? { reviewed: false, important: false, note: "" };
+  const review = { ...previous, ...patch };
+  if (hasFindingReview(review)) reviews[index] = review;
+  else delete reviews[index];
+  const updated = { ...analysis };
+  if (Object.keys(reviews).length) updated.reviewByFinding = reviews;
+  else delete updated.reviewByFinding;
+  return updated;
+}
+
 const summarySchema = researchProjectSchema.pick({ id: true, name: true, updatedAt: true });
 let database: Promise<IDBDatabase> | null = null;
 
 function openDatabase(): Promise<IDBDatabase> {
-  if (typeof indexedDB === "undefined") return Promise.reject(new Error("Local saving is unavailable in this browser."));
+  if (typeof indexedDB === "undefined") return Promise.reject(new Error("This browser does not support local project storage."));
   if (!database) {
     database = new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open("sourcelens", 1);
@@ -57,8 +87,8 @@ function openDatabase(): Promise<IDBDatabase> {
         request.result.onversionchange = () => { request.result.close(); database = null; };
         resolve(request.result);
       };
-      request.onerror = () => reject(new Error("Local storage could not be opened. Your current sources are still here."));
-      request.onblocked = () => reject(new Error("Close other SourceLens tabs, then retry local saving."));
+      request.onerror = () => reject(new Error("Local storage could not be opened. Your work is still available on this page."));
+      request.onblocked = () => reject(new Error("Close other SourceLens tabs, then try saving again."));
     }).catch((error) => { database = null; throw error; });
   }
   return database;
@@ -76,7 +106,7 @@ async function write(stores: string[], change: (transaction: IDBTransaction) => 
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(stores, "readwrite");
     transaction.oncomplete = () => resolve();
-    transaction.onabort = () => reject(new Error("Your changes could not be saved locally. Check browser storage space and retry."));
+    transaction.onabort = () => reject(new Error("Your changes are still on this page. Check available browser storage, then retry saving."));
     transaction.onerror = () => { /* onabort reports the failed transaction. */ };
     change(transaction);
   });
@@ -92,7 +122,7 @@ export async function listProjects(): Promise<ProjectSummary[]> {
       const cursor = request.result;
       if (!cursor) { resolve(summaries.sort((a, b) => b.updatedAt - a.updatedAt)); return; }
       const summary = summarySchema.safeParse(cursor.value);
-      if (!summary.success) { reject(new Error("A saved project could not be read. Its data has not been changed.")); return; }
+      if (!summary.success) { reject(new Error("A saved project could not be opened. Its stored data has been left intact.")); return; }
       summaries.push(summary.data);
       cursor.continue();
     };
@@ -104,7 +134,7 @@ export async function getProject(id: string): Promise<ResearchProject | null> {
   const stored = await readRequest(db.transaction("projects").objectStore("projects").get(id));
   if (stored === undefined) return null;
   const project = researchProjectSchema.safeParse(stored);
-  if (!project.success) throw new Error("This project could not be restored. Its saved data has not been changed.");
+  if (!project.success) throw new Error("This project could not be opened. Its stored data has been left intact.");
   return project.data;
 }
 

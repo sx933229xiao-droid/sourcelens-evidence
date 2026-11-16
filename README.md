@@ -4,7 +4,7 @@
 
 SourceLens is an independently developed AI workspace for comparing claims across two sources and tracing findings back to their original evidence. It is built for students, researchers, and creators who need to check what different sources actually say.
 
-Create a local research project, paste text or import TXT / Markdown / text-based PDF files, run an AI comparison, and open a finding to inspect its original quotations. Choose PDF pages and review their text before importing, then switch between reading and editing. Return to saved projects without repeating the analysis, and export the findings and evidence as Markdown. SourceLens organizes agreements, potential conflicts, context differences, single-source claims, and statements that need review.
+Prepare source documents in Workspace, then review their findings in Evidence Explorer. Compare original excerpts side by side, open their context, mark findings reviewed or important, and add research notes. Local projects restore your sources, analysis, and review; Markdown reports include the evidence and any annotations. SourceLens organizes agreements, potential conflicts, context differences, single-source claims, and statements that need review.
 
 ## Demo
 
@@ -24,15 +24,21 @@ AI is used to compare the meaning of differently worded claims and explain diffe
 
 ## Development Status
 
-**V0.5 running locally — complete long-document import, single-request full-text analysis, and cancellable comparisons.**
+**V0.6 running locally — a dedicated Evidence Explorer, saved human reviews, combined filters, and protected annotations.**
 
-The Next.js application runs locally and its production build passes. V0.5 removes the former per-source character limit and was exercised with a complete 14-page PDF and equivalent long TXT / Markdown files on November 16, 2026. It retains the existing provider configuration, model, inference parameters, prompt, and evidence-validation rules. No external model inference was used for V0.5 verification. The demo image above records the earlier V0.2 comparison interface.
+The Next.js application runs locally and its production build passes. V0.6 separates source preparation from evidence review while retaining V0.5 long-document import and full-text comparison. Existing real-model findings were restored in the new Explorer; controlled local responses verified analysis replacement, cancellation, and failure without new external inference. The provider configuration, model, inference parameters, prompt, and evidence-validation rules are unchanged. The demo image above records the earlier V0.2 comparison interface.
 
 ### Implemented
 
+- Workspace for source preparation and analysis; Evidence Explorer for reviewing results. Projects with a saved analysis open in Explorer, and new successful comparisons open it automatically.
+- Independent Findings navigation, side-by-side Source A / B excerpts, original-source location, and a distinct view for findings that cite only one source.
+- Per-finding Reviewed and Important marks and plain-text research notes, saved with the current analysis. Notes use the existing 500ms autosave; marks save immediately.
+- Combined keyword, relationship, review-status, and important-only filters. Search includes finding topics, explanations, excerpts, and research notes.
+- Cancellable confirmation before editing a source, replacing imported text, or comparing again when human annotations exist. A successful new comparison starts with no annotations; failure or cancellation keeps them.
+- Markdown adds review content only to findings with actual annotations. Unannotated projects keep their previous export format.
 - Browser-local text PDF import up to 50 MB, using a locally served PDF.js Worker. Documents of up to five pages automatically preview all pages; longer documents show their page count first and offer full-document or selected-range extraction.
 - An editable PDF preview with inclusive page ranges, progress, cancellation, a live character count, and explicit confirmation, without a character limit.
-- Read / Edit source views. **Locate in source** opens the reading view, highlights the exact matching excerpt, and scrolls it into view.
+- Read / Edit source views. **View in source** opens Workspace, highlights the exact matching excerpt, and scrolls it into view; returning to Explorer retains the current selection and filters.
 - PDF file name, Edited status, and selected page range survive project switching and refresh; Markdown reports include this PDF provenance.
 - Create, rename, switch, and delete local research projects from a compact toolbar. Each project contains two sources and its latest successful analysis.
 - Native IndexedDB storage with 500ms text autosave, immediate saves for imports and analysis, and submission of pending changes before switching projects. The interface distinguishes saving, saved, and failed writes.
@@ -45,10 +51,20 @@ The Next.js application runs locally and its production build passes. V0.5 remov
 - Complete source text is submitted in that single request, without automatic truncation, compression, splitting, or retries. The configured model service determines its context capacity.
 - Cancellable comparisons with elapsed time, a 240-second model-service timeout, and a 255-second browser fallback. Existing successful findings remain readable during another comparison and survive cancellation or failure.
 - Five relationships: Agreement, Potential Conflict, Context Difference, Single-Source Claim, and Needs Review.
-- Findings with a topic, explanation, and expandable original excerpts; **Locate in source** highlights the matching text in the source reading view.
+- Selectable findings with a topic, explanation, and paired original excerpts; **View in source** highlights the matching text in the source reading view.
 - Independent validation of findings. Invalid findings are omitted while valid findings remain visible; unreadable responses or responses with no usable findings return an error.
 - Desktop and narrow-screen layouts, loading feedback, file-size protection, and errors that preserve source text and any previous successful analysis.
-- After analysis, the desktop workspace gives sources and findings approximately 55:45 of the available width. Result explanations and excerpts use 14px text, with clearer 12px evidence actions.
+- Explorer places Findings navigation beside the review detail on desktop. Small screens stack navigation, detail, and the two sources; source preparation keeps two full-width source panels in Workspace.
+
+### V0.6 verification — November 16, 2026
+
+- Production build and TypeScript check passed. A duplicate-property diagnostic in the first build was corrected before the successful build. Lightweight checks cover legacy records, original-index annotation binding, sparse annotation removal, literal notes, and unchanged unannotated Markdown.
+- Browser operation verified Reviewed / Important marks, multiline notes, combined filters including note keywords, preservation of a selected finding outside the current filters, and clearing filters without changing an eligible selection.
+- Immediate project switching and refresh restored the correct marks and notes. Original-source location opened the exact quote in Workspace; returning to Explorer retained the selected finding.
+- Source editing, TXT replacement, PDF replacement, and a new comparison all offered cancellable annotation protection. Cancelling preserved the original sources and review; cancelling PDF replacement also retained the preview. Accepting a source edit cleared its analysis and annotations, and subsequent typing did not prompt again.
+- Controlled local responses verified review controls paused during comparison, cancellation and failure retaining annotations, and a successful replacement clearing them even when the finding contents were the same. These are lifecycle checks, not new real-model analysis or accuracy evidence.
+- A downloaded annotated report contained all findings but only one human-review block for the annotated finding. The original V0.3 real-model project restored three findings; its new unannotated export was byte-for-byte identical to its previous report.
+- At a 375px CSS viewport, the page had no horizontal overflow; navigation and A/B evidence stacked correctly. No test framework or new dependency was added.
 
 ### V0.5 verification — November 16, 2026
 
@@ -140,7 +156,7 @@ SourceLens compares statements rather than deciding objective truth. Different d
 
 Every displayed quote must be an exact substring of its corresponding submitted source. Agreement, Potential Conflict, and Context Difference require evidence from both sources. An invalid quote or invalid structure removes that finding, and the interface reports the number omitted. Matching an excerpt verifies its presence in the input, **not** the truth of the claim or the correctness of the AI explanation.
 
-Analysis is tied to the submitted text: editing, imports, and project operations are locked during a request, while source reading and existing findings remain available. Editing either source clears its previous analysis. Reopening a saved project does not repeat the AI call or change its findings, omitted count, or analysis time. When unchanged sources are explicitly compared again, failure or cancellation preserves the last successful result.
+Analysis is tied to the submitted text: editing, imports, review changes, and project operations are locked during a request, while source reading and existing findings remain available. Editing either source clears its previous analysis and review; annotated analyses require confirmation first. Reopening a saved project does not repeat the AI call or change its findings, omitted count, or analysis time. When unchanged sources are explicitly compared again, failure or cancellation preserves the last successful result and its annotations.
 
 Use **Cancel** to stop waiting and resume editing immediately. Cancellation is passed to the server and provider request, and late responses cannot replace the current project or a later comparison; provider-side processing may not stop immediately. The model-service call times out after 240 seconds, including response reading. The browser allows 255 seconds before its fallback timeout. Retry manually when needed. If the configured service rejects the input capacity, SourceLens keeps the complete text and asks you to edit it or select fewer PDF pages. An explicit `finish_reason: "length"` is treated as incomplete output and does not replace a successful analysis.
 
@@ -148,11 +164,21 @@ Use **Cancel** to stop waiting and resume editing immediately. Cancellation is p
 
 Choose a local text-based `.pdf` file of up to 50 MB from either source's **Import** control. SourceLens loads it locally and reads its page count. Documents with five pages or fewer automatically extract an initial full preview. For longer documents, choose **Extract all pages**, or set an inclusive **From page / To page** range and click **Extract selected pages**. Text extraction runs page by page in a browser Worker and can be cancelled.
 
-Every PDF requires preview confirmation before replacing a source. Review the reading order, adjust the range, or edit the preview. **Use text** is enabled when the applied range is valid and its preview contains non-whitespace text, without a character limit. Changing page inputs requires extracting that range before importing; extracting again replaces preview edits. Cancel leaves the current source and analysis intact.
+Every PDF requires preview confirmation before replacing a source. Review the reading order, adjust the range, or edit the preview. **Import text** is enabled when the applied range is valid and its preview contains non-whitespace text, without a character limit. Changing page inputs requires extracting that range before importing; extracting again replaces preview edits. If the current analysis has review marks or notes, replacing its source requires an additional confirmation. Cancel leaves the current source and analysis intact.
 
 PDF page numbers count pages in the file, starting at 1; they may differ from printed page labels. The imported source and Markdown report retain the file name and selected page range. Preview edits and later source edits are marked **Edited**. Page ranges describe the imported material, not a per-excerpt page map.
 
-PDF imports open in **Read** mode. Use **Edit** to revise the same text. **Locate in source** switches to Read, highlights the first exact match, and scrolls to it. View changes do not modify the text, invalidate findings, or write another project version. Exact-quote validation applies to the final imported text. To select different PDF pages later, reimport the original file.
+PDF imports open in **Read** mode. Use **Edit** to revise the same text. **View in source** opens Workspace in Read mode, highlights the first exact match, and scrolls to it. View changes do not modify the text, invalidate findings, or write another project version. Exact-quote validation applies to the final imported text. To select different PDF pages later, reimport the original file.
+
+## Evidence Explorer and Reviews
+
+Select a finding in the navigation to read its explanation and original Source A / B excerpts. A source that is not cited is labelled accordingly; this does not imply that its full document contains no related claim. Use **View in source** for context, then return to Explorer to continue the same review.
+
+Use **Mark reviewed**, **Mark important**, and **Research notes** independently. Reviewed records that you have examined the finding; it does not verify its truth or change its AI relationship type. In particular, the relationship **Needs review** is separate from your review status. Project saving feedback applies to your annotations as well as the sources.
+
+Filters combine with each other. If editing a note or changing a mark makes the selected finding stop matching, its detail remains open with an **Outside current filters** notice. Changing filter controls selects a matching finding where possible. Selections and filters are temporary view state and reset when opening another project.
+
+Annotations belong to the current analysis. Before an annotated source is changed or replaced, SourceLens lets you cancel; a new comparison also asks first, and clears annotations only if it succeeds. Export a report to keep a readable copy before replacing the analysis. No annotations are automatically transferred between analyses.
 
 ## Local Research Projects and Reports
 
@@ -160,21 +186,21 @@ Use **New Project** to start a separate comparison, **Rename** to name it, and t
 
 Text edits save after a 500ms pause. Imports, successful analyses, renaming, and confirmed Clear / Try Example actions save immediately. Switching projects submits pending edits first. Wait for **Saved locally** before refreshing or closing; unsaved changes trigger a leave-page warning, and a failed save keeps the current data visible with a **Retry** action.
 
-**Clear** keeps the project but removes its sources and analysis. **Try Example** replaces them with the fictional example. These actions ask for confirmation only when source content or an analysis would be overwritten. Editing a source invalidates the existing analysis; older source versions and analysis history are not retained.
+**Clear** keeps the project but removes its sources, analysis, and review. **Try Example** replaces them with the fictional example. These actions ask for confirmation only when source content or an analysis would be overwritten. Their confirmation also identifies any review notes that would be removed. Editing or importing a source invalidates the existing analysis and its annotations; annotated analyses require confirmation first. Older source versions and analysis history are not retained.
 
-**Export Markdown** downloads the full current analysis, including project and source names, the original analysis time, all five relationship counts, Findings, corresponding original evidence, and the omitted-finding count. It exports all findings regardless of the selected relationship filter. Full source documents are not appended, and exporting never calls AI.
+**Export Markdown** downloads the full current analysis, including project and source names, the original analysis time, all five relationship counts, Findings, corresponding original evidence, and the omitted-finding count. Findings with review marks or a nonempty note also include their human-review content; unannotated findings add no review block. Reports include the latest notes even before their autosave delay has elapsed. Export includes all findings regardless of the current filters. Full source documents are not appended, and exporting never calls AI.
 
 ## Data and Credentials
 
-Projects are stored in this browser's IndexedDB, without a cloud database or accounts. Only current source text, file names and Edited markers, PDF page-range metadata where applicable, the latest analysis, and necessary project metadata are retained. Original files, unselected PDF text, old versions, raw provider responses, and generated reports are not stored. Imported files are read in the browser, without uploading the file to the app server. PDF parsing resources are released when preview is confirmed or cancelled. Only clicking **Compare Sources** sends the current source text to your configured AI provider; the provider's own data policies apply. Application code does not log complete source text.
+Projects are stored in this browser's IndexedDB, without a cloud database or accounts. Only current source text, file names and Edited markers, PDF page-range metadata where applicable, the latest analysis with its human annotations, and necessary project metadata are retained. Original files, unselected PDF text, old versions, raw provider responses, and generated reports are not stored. Imported files are read in the browser, without uploading the file to the app server. PDF parsing resources are released when preview is confirmed or cancelled. Only clicking **Compare Sources** sends the current source text to your configured AI provider; review marks and notes are not added to that request. The provider's own data policies apply. Application code does not log complete source text.
 
-Local projects belong to the browser profile and exact site origin, including the port: `localhost` and `127.0.0.1` are separate storage locations. Clearing site data, private browsing, or browser storage eviction can remove saved projects. Use a consistent address and export useful reports. V0.5 is intended for editing in one tab and does not merge concurrent changes from multiple tabs or sync across devices. Projects have no arbitrary count limit or automatic expiration; delete unwanted projects to release their records.
+Local projects belong to the browser profile and exact site origin, including the port: `localhost` and `127.0.0.1` are separate storage locations. Clearing site data, private browsing, or browser storage eviction can remove saved projects. Use a consistent address and export useful reports. V0.6 is intended for editing in one tab and does not merge concurrent changes from multiple tabs or sync across devices. Projects have no arbitrary count limit or automatic expiration; delete unwanted projects to release their records.
 
 API credentials are used only on the server. `.env.local` and other real environment files are ignored by Git; `.env.example` contains placeholders only. Never add credentials with a `NEXT_PUBLIC_` prefix or commit a real API key.
 
 ## Current Limits
 
-V0.5 compares two texts per project without an application character limit. UTF-8 TXT / Markdown and text-based PDF imports each have a 50 MB file limit; browser memory and local storage space still apply. The configured OpenAI-compatible service determines the available context and output capacity. SourceLens submits complete sources once and preserves them when analysis fails; it does not automatically shorten, compress, or split them.
+V0.6 compares two texts per project without an application character limit. UTF-8 TXT / Markdown and text-based PDF imports each have a 50 MB file limit; browser memory and local storage space still apply. The configured OpenAI-compatible service determines the available context and output capacity. SourceLens submits complete sources once and preserves them when analysis fails; it does not automatically shorten, compress, or split them. Research notes are plain text and belong to one current analysis; review history is not retained.
 
 Scanned/image-only pages need OCR, and password-protected PDFs are unsupported. Complex columns, tables, and footnotes can affect extraction order; review and edit the preview. SourceLens displays extracted text, not original PDF page images, and does not reconstruct complex layouts. URL fetching, Word import, analysis history, project backup/import, and external fact checking are not implemented. Markdown reports are readable exports, not restorable project backups. AI can miss claims or misclassify relationships, and exact-quote validation can omit otherwise useful findings if the model alters their quotations. Review the original sources before relying on a conclusion.
 

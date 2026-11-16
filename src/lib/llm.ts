@@ -30,10 +30,10 @@ function providerError(status: number, body: string): ComparisonError {
       capacityExceeded = /context_length_exceeded|request_too_large|maximum context length|(?:context|input|prompt).{0,80}(?:exceed|too long|too large)|too many (?:input |prompt )?tokens/i.test(detail);
     } catch { /* Keep an unrecognized provider error generic. */ }
   }
-  if (capacityExceeded) return new ComparisonError("The configured model service cannot accept this much source text. Your complete sources are still here. Edit them or select fewer PDF pages, then compare again.", 413);
-  if (status === 401 || status === 403) return new ComparisonError("The AI provider rejected the server credentials. Check LLM_API_KEY and model access.");
-  if (status === 429) return new ComparisonError("The AI provider's rate or usage limit was reached. Check your provider account or try again later.");
-  return new ComparisonError(`The AI provider could not complete this comparison (HTTP ${status}). Your sources and any previous analysis are unchanged. Please try again.`);
+  if (capacityExceeded) return new ComparisonError("The model service cannot accept this much text. Edit the sources or select fewer PDF pages.", 413);
+  if (status === 401 || status === 403) return new ComparisonError("The AI service rejected the credentials. Check LLM_API_KEY and access to the configured model.");
+  if (status === 429) return new ComparisonError("The AI service reached a rate or usage limit. Check your account or try again later.");
+  return new ComparisonError(`The AI service could not complete the comparison (HTTP ${status}). Try again later.`);
 }
 
 const SYSTEM_PROMPT = `You are SourceLens, a careful source-comparison assistant.
@@ -62,7 +62,7 @@ export async function compareSources(
 ): Promise<ComparisonResult> {
   if (!getConfigurationStatus().configured) {
     throw new ComparisonError(
-      "AI is not connected yet. Set LLM_BASE_URL, LLM_MODEL, and LLM_API_KEY in .env.local on the server, then restart SourceLens.",
+      "AI is not configured. Set LLM_BASE_URL, LLM_MODEL, and LLM_API_KEY on the server, then restart SourceLens.",
       503,
     );
   }
@@ -107,9 +107,9 @@ export async function compareSources(
 
     let completion;
     try { completion = JSON.parse(responseText); }
-    catch { throw new ComparisonError("The AI response could not be read as a comparison. Your sources and any previous analysis are unchanged; please try again."); }
+    catch { throw new ComparisonError("The model returned an unreadable comparison. Try comparing again."); }
     if (completion?.choices?.[0]?.finish_reason === "length") {
-      throw new ComparisonError("The model reached its output limit, so this analysis is incomplete. Your sources and any previous analysis are unchanged.");
+      throw new ComparisonError("The model reached its output limit before finishing the analysis.");
     }
 
     let data: unknown;
@@ -120,12 +120,12 @@ export async function compareSources(
       const json = content.trim().replace(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i, "$1").trim();
       data = JSON.parse(json);
     } catch {
-      throw new ComparisonError("The AI response could not be read as a comparison. Your sources and any previous analysis are unchanged; please try again.");
+      throw new ComparisonError("The model returned an unreadable comparison. Try comparing again.");
     }
 
     const result = verifyFindings(data, sources);
     if (!result || result.findings.length === 0) {
-      throw new ComparisonError("No usable findings with matching source excerpts were returned. Your sources and any previous analysis are unchanged; please try again.");
+      throw new ComparisonError("No findings could be matched to the sources. Try comparing again or use more specific text.");
     }
     signal.throwIfAborted();
 
@@ -147,9 +147,9 @@ export async function compareSources(
 
     return result;
   } catch (error) {
-    if (requestSignal.aborted) throw new ComparisonError("Comparison cancelled. Your sources and any previous analysis are unchanged.", 499);
-    if (timeoutSignal.aborted) throw new ComparisonError("The model service did not finish within 240 seconds. Your sources and any previous analysis are unchanged; you can try again.", 504);
+    if (requestSignal.aborted) throw new ComparisonError("Comparison cancelled.", 499);
+    if (timeoutSignal.aborted) throw new ComparisonError("The AI service did not finish within 240 seconds. Try comparing again.", 504);
     if (error instanceof ComparisonError) throw error;
-    throw new ComparisonError("The connection to the AI provider was interrupted. Your sources and any previous analysis are unchanged. Check the server's API address and connection, then try again.");
+    throw new ComparisonError("The connection to the AI service was interrupted. Check the server connection and try again.");
   }
 }

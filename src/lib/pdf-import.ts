@@ -70,6 +70,6 @@ export async function openPdf(file: File, signal: AbortSignal): Promise<PdfSessi
     checkAborted(signal);
     if (cause instanceof Error && cause.name === "PasswordException") throw new Error("Password-protected PDFs are not supported. Choose an unencrypted text PDF.");
     if (cause instanceof Error && cause.name === "InvalidPDFException") throw new Error("This PDF could not be read. Choose a valid text PDF.");
-    throw cause;
+    throw new Error("This PDF could not be opened. Try another text-based PDF.");
   }
 }

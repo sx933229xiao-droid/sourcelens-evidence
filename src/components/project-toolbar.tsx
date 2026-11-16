@@ -18,7 +18,7 @@ type ProjectToolbarProps = {
   onExport: () => void;
 };
 
-const saveLabels: Record<SaveState, string> = { restoring: "Restoring…", idle: "Ready to save locally", saving: "Saving…", saved: "Saved locally", error: "Not saved" };
+const saveLabels: Record<SaveState, string> = { restoring: "Opening project…", idle: "Not saved yet", saving: "Saving…", saved: "Saved locally", error: "Save failed" };
 
 export function ProjectToolbar({ project, projects, saveState, disabled, onSelect, onCreate, onRename, onDelete, onExport }: ProjectToolbarProps) {
   const [editing, setEditing] = useState(false);

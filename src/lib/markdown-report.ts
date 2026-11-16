@@ -1,5 +1,5 @@
 import { relationships, relationshipLabels } from "@/lib/comparison-schema";
-import type { ResearchProject } from "@/lib/project-store";
+import { hasFindingReview, type ResearchProject } from "@/lib/project-store";
 
 function plainText(value: string): string {
   return value.replace(/[\\`*_{}\[\]<>()#!|~]/g, "\\$&");
@@ -40,7 +40,13 @@ export function buildMarkdownReport(project: ResearchProject): string {
     "## Findings",
   ];
   result.findings.forEach((finding, index) => {
-    lines.push("", `### ${index + 1}. ${plainText(finding.topic)}`, "", `**Relationship:** ${relationshipLabels[finding.relationship]}`, "", plainText(finding.explanation), "", "**Original evidence**", "");
+    lines.push("", `### ${index + 1}. ${plainText(finding.topic)}`, "", `**Relationship:** ${relationshipLabels[finding.relationship]}`, "", plainText(finding.explanation), "");
+    const review = project.analysis!.reviewByFinding?.[index];
+    if (hasFindingReview(review)) {
+      lines.push("**Human review**", "", `- Reviewed: ${review.reviewed ? "Yes" : "No"}`, `- Important: ${review.important ? "Yes" : "No"}`, "");
+      if (review.note.trim()) lines.push("**Research notes**", "", plainText(review.note), "");
+    }
+    lines.push("**Original evidence**", "");
     finding.evidence.forEach(({ source, quote }) => {
       lines.push(`Source ${source} — ${sourceName(source)}`, "", quoteBlock(quote), "");
     });

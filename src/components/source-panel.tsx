@@ -13,8 +13,8 @@ const MAX_TEXT_FILE_BYTES = 50 * 1024 * 1024;
 type SourcePanelProps = {
   source: SourceId;
   value: string;
-  onChange: (source: SourceId, value: string) => void;
-  onImport: (source: SourceId, value: string, file: ImportedSourceFile) => void;
+  onChange: (source: SourceId, value: string) => Promise<boolean>;
+  onImport: (source: SourceId, value: string, file: ImportedSourceFile) => Promise<boolean>;
   onImportingChange: (importing: boolean) => void;
   importedFile: ImportedSourceFile | null;
   readOnly: boolean;
@@ -54,11 +54,12 @@ export const SourcePanel = memo(function SourcePanel({ source, value, onChange, 
     onImportingChange(false);
   }
 
-  function confirmPdfImport(text: string, file: ImportedSourceFile) {
+  async function confirmPdfImport(text: string, file: ImportedSourceFile) {
     if (!pdfDraft || !importController.current || importController.current.signal.aborted) return;
-    onImport(source, text, file);
-    setMode("read");
-    cancelPdfImport();
+    if (await onImport(source, text, file)) {
+      setMode("read");
+      cancelPdfImport();
+    }
   }
 
   async function importFile(event: ChangeEvent<HTMLInputElement>) {
@@ -99,11 +100,12 @@ export const SourcePanel = memo(function SourcePanel({ source, value, onChange, 
         setImportError("This file is empty. Choose a file containing text.");
         return;
       }
-      onImport(source, text, { name: file.name, edited: false });
-      setMode("edit");
-      inputRef.current?.focus();
+      if (await onImport(source, text, { name: file.name, edited: false })) {
+        setMode("edit");
+        inputRef.current?.focus();
+      }
     } catch (cause) {
-      if (!controller.signal.aborted) setImportError(cause instanceof Error && isPdf ? cause.message : "This file could not be read. Please try again.");
+      if (!controller.signal.aborted) setImportError(cause instanceof Error && isPdf ? cause.message : "This file could not be opened. Try another file.");
     } finally {
       if (!awaitingPreview && importController.current === controller) {
         importController.current = null;
@@ -135,7 +137,7 @@ export const SourcePanel = memo(function SourcePanel({ source, value, onChange, 
       {importError && <p className="source-import-error" id={importErrorId} role="alert">{importError}</p>}
       {openingPdf && <div className="source-import-progress" role="status"><span>Opening PDF…</span><button type="button" onClick={cancelPdfImport}>Cancel</button></div>}
       {pdfDraft && <PdfImportDialog fileName={pdfDraft.fileName} session={pdfDraft.session} onConfirm={confirmPdfImport} onCancel={cancelPdfImport} />}
-      <div className="source-view-tools" role="group" aria-label={`Source ${source} view`}><button type="button" aria-pressed={mode === "read"} disabled={!value} onClick={() => setMode("read")}>Read</button><button type="button" aria-pressed={mode === "edit"} disabled={readOnly} onClick={() => setMode("edit")}>Edit</button><span>{mode === "read" ? "Reading view" : readOnly ? "Read-only while busy" : "Editable text"}</span></div>
+      <div className="source-view-tools" role="group" aria-label={`Source ${source} view`}><button type="button" aria-pressed={mode === "read"} disabled={!value} onClick={() => setMode("read")}>Read</button><button type="button" aria-pressed={mode === "edit"} disabled={readOnly} onClick={() => setMode("edit")}>Edit</button><span>{mode === "read" ? "Reading view" : readOnly ? "Editing paused" : "Editable text"}</span></div>
 
       {mode === "read" ? <div className="source-reader" role="region" aria-label={`Source ${source} reading view`} tabIndex={0}>{matchStart >= 0 && location ? <>{value.slice(0, matchStart)}<mark ref={highlightRef} tabIndex={-1}>{location.quote}</mark>{value.slice(matchStart + location.quote.length)}</> : value}</div> : <textarea
         ref={inputRef}
@@ -143,11 +145,11 @@ export const SourcePanel = memo(function SourcePanel({ source, value, onChange, 
         aria-label={`Source ${source}`}
         className="source-input"
         value={value}
-        onChange={(event) => { setImportError(null); onChange(source, event.target.value); }}
+        onChange={(event) => { setImportError(null); void onChange(source, event.target.value); }}
         readOnly={readOnly}
         spellCheck={false}
         aria-describedby={`${countId}${importError ? ` ${importErrorId}` : ""}`}
-        placeholder={`Paste your ${source === "A" ? "first" : "second"} source here, or import TXT, Markdown, or a text-based PDF.\n\nAn article, report, announcement, or any text you want to compare. Keep the original wording so every finding can lead back to its source.`}
+        placeholder={`Paste your ${source === "A" ? "first" : "second"} source, or import a TXT, Markdown, or text-based PDF file.`}
       />}
 
       <div className="source-footer" id={countId}>
