@@ -1,19 +1,20 @@
 "use client";
 
-import { type ChangeEvent, type RefObject, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, type RefObject, memo, useEffect, useMemo, useRef, useState } from "react";
 import { Upload } from "lucide-react";
-import { MAX_SOURCE_LENGTH, type SourceId } from "@/lib/comparison-schema";
+import { type SourceId } from "@/lib/comparison-schema";
 import { openPdf, type PdfSession } from "@/lib/pdf-import";
 import type { ImportedSourceFile } from "@/lib/project-store";
 import { PdfImportDialog } from "./pdf-import-dialog";
 
 export type ExcerptLocation = { source: SourceId; quote: string };
+const MAX_TEXT_FILE_BYTES = 50 * 1024 * 1024;
 
 type SourcePanelProps = {
   source: SourceId;
   value: string;
-  onChange: (value: string) => void;
-  onImport: (value: string, file: ImportedSourceFile) => void;
+  onChange: (source: SourceId, value: string) => void;
+  onImport: (source: SourceId, value: string, file: ImportedSourceFile) => void;
   onImportingChange: (importing: boolean) => void;
   importedFile: ImportedSourceFile | null;
   readOnly: boolean;
@@ -21,7 +22,7 @@ type SourcePanelProps = {
   location: ExcerptLocation | null;
 };
 
-export function SourcePanel({ source, value, onChange, onImport, onImportingChange, importedFile, readOnly, inputRef, location }: SourcePanelProps) {
+export const SourcePanel = memo(function SourcePanel({ source, value, onChange, onImport, onImportingChange, importedFile, readOnly, inputRef, location }: SourcePanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importController = useRef<AbortController | null>(null);
   const highlightRef = useRef<HTMLElement>(null);
@@ -29,10 +30,10 @@ export function SourcePanel({ source, value, onChange, onImport, onImportingChan
   const [openingPdf, setOpeningPdf] = useState(false);
   const [pdfDraft, setPdfDraft] = useState<{ fileName: string; session: PdfSession } | null>(null);
   const [mode, setMode] = useState<"read" | "edit">(importedFile?.pdf ? "read" : "edit");
-  const overLimit = value.length > MAX_SOURCE_LENGTH;
   const countId = `source-${source.toLowerCase()}-count`;
   const importErrorId = `source-${source.toLowerCase()}-import-error`;
-  const matchStart = location ? value.indexOf(location.quote) : -1;
+  const quote = location?.quote;
+  const matchStart = useMemo(() => quote ? value.indexOf(quote) : -1, [value, quote]);
 
   useEffect(() => () => { importController.current?.abort(); }, []);
   useEffect(() => { if (location) setMode("read"); }, [location]);
@@ -55,7 +56,7 @@ export function SourcePanel({ source, value, onChange, onImport, onImportingChan
 
   function confirmPdfImport(text: string, file: ImportedSourceFile) {
     if (!pdfDraft || !importController.current || importController.current.signal.aborted) return;
-    onImport(text, file);
+    onImport(source, text, file);
     setMode("read");
     cancelPdfImport();
   }
@@ -71,10 +72,9 @@ export function SourcePanel({ source, value, onChange, onImport, onImportingChan
       setImportError("Choose a .txt, .md, or text-based .pdf file.");
       return;
     }
-    // A valid 10,000-character UTF-8 text fits within this read limit.
     const isPdf = /\.pdf$/i.test(file.name);
-    if (!isPdf && file.size > MAX_SOURCE_LENGTH * 4) {
-      setImportError("This file is too large. Choose a text with up to 10,000 characters.");
+    if (!isPdf && file.size > MAX_TEXT_FILE_BYTES) {
+      setImportError("This text file exceeds 50 MB. Choose a smaller file.");
       return;
     }
 
@@ -99,11 +99,7 @@ export function SourcePanel({ source, value, onChange, onImport, onImportingChan
         setImportError("This file is empty. Choose a file containing text.");
         return;
       }
-      if (text.length > MAX_SOURCE_LENGTH) {
-        setImportError("This file exceeds 10,000 characters. Shorten it before importing.");
-        return;
-      }
-      onImport(text, { name: file.name, edited: false });
+      onImport(source, text, { name: file.name, edited: false });
       setMode("edit");
       inputRef.current?.focus();
     } catch (cause) {
@@ -139,7 +135,7 @@ export function SourcePanel({ source, value, onChange, onImport, onImportingChan
       {importError && <p className="source-import-error" id={importErrorId} role="alert">{importError}</p>}
       {openingPdf && <div className="source-import-progress" role="status"><span>Opening PDF…</span><button type="button" onClick={cancelPdfImport}>Cancel</button></div>}
       {pdfDraft && <PdfImportDialog fileName={pdfDraft.fileName} session={pdfDraft.session} onConfirm={confirmPdfImport} onCancel={cancelPdfImport} />}
-      <div className="source-view-tools" role="group" aria-label={`Source ${source} view`}><button type="button" aria-pressed={mode === "read"} disabled={!value || readOnly} onClick={() => setMode("read")}>Read</button><button type="button" aria-pressed={mode === "edit"} disabled={readOnly} onClick={() => setMode("edit")}>Edit</button><span>{mode === "read" ? "Reading view" : "Editable text"}</span></div>
+      <div className="source-view-tools" role="group" aria-label={`Source ${source} view`}><button type="button" aria-pressed={mode === "read"} disabled={!value} onClick={() => setMode("read")}>Read</button><button type="button" aria-pressed={mode === "edit"} disabled={readOnly} onClick={() => setMode("edit")}>Edit</button><span>{mode === "read" ? "Reading view" : readOnly ? "Read-only while busy" : "Editable text"}</span></div>
 
       {mode === "read" ? <div className="source-reader" role="region" aria-label={`Source ${source} reading view`} tabIndex={0}>{matchStart >= 0 && location ? <>{value.slice(0, matchStart)}<mark ref={highlightRef} tabIndex={-1}>{location.quote}</mark>{value.slice(matchStart + location.quote.length)}</> : value}</div> : <textarea
         ref={inputRef}
@@ -147,18 +143,17 @@ export function SourcePanel({ source, value, onChange, onImport, onImportingChan
         aria-label={`Source ${source}`}
         className="source-input"
         value={value}
-        onChange={(event) => { setImportError(null); onChange(event.target.value); }}
+        onChange={(event) => { setImportError(null); onChange(source, event.target.value); }}
         readOnly={readOnly}
         spellCheck={false}
         aria-describedby={`${countId}${importError ? ` ${importErrorId}` : ""}`}
-        aria-invalid={overLimit}
         placeholder={`Paste your ${source === "A" ? "first" : "second"} source here, or import TXT, Markdown, or a text-based PDF.\n\nAn article, report, announcement, or any text you want to compare. Keep the original wording so every finding can lead back to its source.`}
       />}
 
-      <div className={`source-footer${overLimit ? " over-limit" : ""}`} id={countId}>
-        <span>{overLimit ? "Text exceeds limit" : readOnly ? "Reading source…" : importedFile?.pdf ? "Extracted PDF text" : "Plain text"}</span>
-        <span className="character-count">{value.length.toLocaleString("en-US")} <span>/ {MAX_SOURCE_LENGTH.toLocaleString("en-US")}</span></span>
+      <div className="source-footer" id={countId}>
+        <span>{importedFile?.pdf ? "Extracted PDF text" : "Plain text"}</span>
+        <span className="character-count">{value.length.toLocaleString("en-US")} characters</span>
       </div>
     </section>
   );
-}
+});

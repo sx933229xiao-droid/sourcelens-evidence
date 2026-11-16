@@ -13,7 +13,8 @@ import {
 type FindingsPanelProps = {
   result: ComparisonResult | null;
   loading: boolean;
-  elapsedSeconds: number;
+  startedAt: number | null;
+  onCancel: () => void;
   onLocate: (source: SourceId, quote: string) => void;
 };
 
@@ -25,7 +26,25 @@ const relationshipDescriptions: Record<Relationship, string> = {
   needs_review: "More context is needed",
 };
 
-export function FindingsPanel({ result, loading, elapsedSeconds, onLocate }: FindingsPanelProps) {
+function ComparisonProgress({ startedAt, compact, onCancel }: { startedAt: number; compact: boolean; onCancel: () => void }) {
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => Math.floor((Date.now() - startedAt) / 1000));
+  useEffect(() => {
+    const update = () => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [startedAt]);
+  return (
+    <div className={compact ? "comparison-progress" : "findings-loading"} role="status">
+      <span className="loading-icon"><LoaderCircle size={compact ? 16 : 27} strokeWidth={1.3} className="spinner" aria-hidden="true" /></span>
+      {compact ? <p>Comparing… Previous analysis shown below.</p> : <><p className="eyebrow">READING BOTH SOURCES</p><h3>Connecting the claims.</h3><p>Comparing statements and matching findings to the original passages.</p></>}
+      <span className="elapsed-time" aria-hidden="true">{elapsedSeconds}s elapsed</span>
+      <button type="button" className="button button-secondary comparison-cancel" onClick={onCancel}>Cancel</button>
+    </div>
+  );
+}
+
+export function FindingsPanel({ result, loading, startedAt, onCancel, onLocate }: FindingsPanelProps) {
   const [expanded, setExpanded] = useState<number | null>(0);
   const [filter, setFilter] = useState<Relationship | "all">("all");
 
@@ -49,15 +68,8 @@ export function FindingsPanel({ result, loading, elapsedSeconds, onLocate }: Fin
         <span className="panel-eyebrow">{loading ? "IN PROGRESS" : result ? "SOURCE COMPARISON" : "EVIDENCE FIRST"}</span>
       </div>
 
-      {loading ? (
-        <div className="findings-loading" role="status">
-          <span className="loading-icon"><LoaderCircle size={27} strokeWidth={1.3} className="spinner" aria-hidden="true" /></span>
-          <p className="eyebrow">READING BOTH SOURCES</p>
-          <h3>Connecting the claims.</h3>
-          <p>Comparing statements and matching findings to the original passages.</p>
-          <span className="elapsed-time" aria-hidden="true">{elapsedSeconds}s elapsed</span>
-        </div>
-      ) : result ? (
+      {loading && startedAt !== null && <ComparisonProgress startedAt={startedAt} compact={Boolean(result)} onCancel={onCancel} />}
+      {result ? (
         <>
           <div className="findings-toolbar">
             <span>{result.findings.length} {result.findings.length === 1 ? "finding" : "findings"} · 2 sources</span>
@@ -128,7 +140,7 @@ export function FindingsPanel({ result, loading, elapsedSeconds, onLocate }: Fin
           </div>
           <div className="findings-footnote"><Check size={13} aria-hidden="true" /><span>Every displayed excerpt matches its original source.</span></div>
         </>
-      ) : (
+      ) : !loading ? (
         <div className="findings-empty">
           <div className="empty-introduction">
             <h3>See the relationship.<br /><span>Follow the evidence.</span></h3>
@@ -145,7 +157,7 @@ export function FindingsPanel({ result, loading, elapsedSeconds, onLocate }: Fin
           </div>
           <p className="empty-footnote">Different wording doesn’t always mean disagreement.</p>
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

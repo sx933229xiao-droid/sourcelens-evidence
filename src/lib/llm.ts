@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  COMPARISON_TIMEOUT_MS,
   type ComparisonRequest,
   type ComparisonResult,
   verifyFindings,
@@ -17,6 +18,22 @@ export class ComparisonError extends Error {
     super(message);
     this.name = "ComparisonError";
   }
+}
+
+function providerError(status: number, body: string): ComparisonError {
+  let capacityExceeded = status === 413;
+  if (status === 400 || status === 422) {
+    try {
+      const data = JSON.parse(body);
+      const error = data?.error ?? data;
+      const detail = typeof error === "string" ? error : [error?.code, error?.type, error?.message].filter((value) => typeof value === "string").join(" ");
+      capacityExceeded = /context_length_exceeded|request_too_large|maximum context length|(?:context|input|prompt).{0,80}(?:exceed|too long|too large)|too many (?:input |prompt )?tokens/i.test(detail);
+    } catch { /* Keep an unrecognized provider error generic. */ }
+  }
+  if (capacityExceeded) return new ComparisonError("The configured model service cannot accept this much source text. Your complete sources are still here. Edit them or select fewer PDF pages, then compare again.", 413);
+  if (status === 401 || status === 403) return new ComparisonError("The AI provider rejected the server credentials. Check LLM_API_KEY and model access.");
+  if (status === 429) return new ComparisonError("The AI provider's rate or usage limit was reached. Check your provider account or try again later.");
+  return new ComparisonError(`The AI provider could not complete this comparison (HTTP ${status}). Your sources and any previous analysis are unchanged. Please try again.`);
 }
 
 const SYSTEM_PROMPT = `You are SourceLens, a careful source-comparison assistant.
@@ -60,9 +77,11 @@ export async function compareSources(
   }
 
   const startedAt = performance.now();
-  let response: Response;
+  const timeoutSignal = AbortSignal.timeout(COMPARISON_TIMEOUT_MS);
+  const signal = AbortSignal.any([requestSignal, timeoutSignal]);
   try {
-    response = await fetch(endpoint, {
+    signal.throwIfAborted();
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -77,62 +96,60 @@ export async function compareSources(
         stream: false,
       }),
       cache: "no-store",
-      signal: AbortSignal.any([requestSignal, AbortSignal.timeout(60_000)]),
+      signal,
     });
-  } catch (error) {
-    if (error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)) {
-      throw new ComparisonError("The comparison did not finish in time. Your sources are still here; try again or shorten them.", 504);
-    }
-    throw new ComparisonError("SourceLens could not reach the AI provider. Check the server's API address and connection, then try again.");
-  }
 
-  const headersReceivedAt = performance.now();
-
-  if (!response.ok) {
-    const message = response.status === 401 || response.status === 403
-      ? "The AI provider rejected the server credentials. Check LLM_API_KEY and model access."
-      : response.status === 429
-        ? "The AI provider's rate or usage limit was reached. Check your provider account or try again later."
-        : `The AI provider could not complete this comparison (HTTP ${response.status}). Please try again.`;
-    throw new ComparisonError(message);
-  }
-
-  let data: unknown;
-  let bodyReceivedAt: number;
-  let usage: { prompt_tokens?: number; completion_tokens?: number; completion_tokens_details?: { reasoning_tokens?: number } } | undefined;
-  try {
+    const headersReceivedAt = performance.now();
     const responseText = await response.text();
-    bodyReceivedAt = performance.now();
-    const completion = JSON.parse(responseText);
-    usage = completion?.usage;
-    const content: unknown = completion?.choices?.[0]?.message?.content;
-    if (typeof content !== "string") throw new Error("Missing content");
-    // Some compatible providers wrap otherwise valid JSON in a Markdown fence.
-    const json = content.trim().replace(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i, "$1").trim();
-    data = JSON.parse(json);
-  } catch {
-    throw new ComparisonError("The AI response could not be read as a comparison. Your sources are unchanged; please try again.");
+    const bodyReceivedAt = performance.now();
+    signal.throwIfAborted();
+    if (!response.ok) throw providerError(response.status, responseText);
+
+    let completion;
+    try { completion = JSON.parse(responseText); }
+    catch { throw new ComparisonError("The AI response could not be read as a comparison. Your sources and any previous analysis are unchanged; please try again."); }
+    if (completion?.choices?.[0]?.finish_reason === "length") {
+      throw new ComparisonError("The model reached its output limit, so this analysis is incomplete. Your sources and any previous analysis are unchanged.");
+    }
+
+    let data: unknown;
+    try {
+      const content: unknown = completion?.choices?.[0]?.message?.content;
+      if (typeof content !== "string") throw new Error("Missing content");
+      // Some compatible providers wrap otherwise valid JSON in a Markdown fence.
+      const json = content.trim().replace(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i, "$1").trim();
+      data = JSON.parse(json);
+    } catch {
+      throw new ComparisonError("The AI response could not be read as a comparison. Your sources and any previous analysis are unchanged; please try again.");
+    }
+
+    const result = verifyFindings(data, sources);
+    if (!result || result.findings.length === 0) {
+      throw new ComparisonError("No usable findings with matching source excerpts were returned. Your sources and any previous analysis are unchanged; please try again.");
+    }
+    signal.throwIfAborted();
+
+    const completedAt = performance.now();
+    const usage = completion?.usage;
+    const reportedServiceTime = response.headers.get("x-envoy-upstream-service-time");
+    // Non-streaming header wait can include connection, queueing, and generation.
+    // Keep one timing line per successful comparison; never log source text or credentials.
+    console.info("[SourceLens timing]", JSON.stringify({
+      providerHeadersMs: Math.round(headersReceivedAt - startedAt),
+      providerBodyMs: Math.round(bodyReceivedAt - headersReceivedAt),
+      processingMs: Math.round(completedAt - bodyReceivedAt),
+      totalMs: Math.round(completedAt - startedAt),
+      upstreamReportedMs: reportedServiceTime !== null && Number.isFinite(Number(reportedServiceTime)) ? Number(reportedServiceTime) : undefined,
+      promptTokens: usage?.prompt_tokens,
+      completionTokens: usage?.completion_tokens,
+      reasoningTokens: usage?.completion_tokens_details?.reasoning_tokens,
+    }));
+
+    return result;
+  } catch (error) {
+    if (requestSignal.aborted) throw new ComparisonError("Comparison cancelled. Your sources and any previous analysis are unchanged.", 499);
+    if (timeoutSignal.aborted) throw new ComparisonError("The model service did not finish within 240 seconds. Your sources and any previous analysis are unchanged; you can try again.", 504);
+    if (error instanceof ComparisonError) throw error;
+    throw new ComparisonError("The connection to the AI provider was interrupted. Your sources and any previous analysis are unchanged. Check the server's API address and connection, then try again.");
   }
-
-  const result = verifyFindings(data, sources);
-  if (!result || result.findings.length === 0) {
-    throw new ComparisonError("No usable findings with matching source excerpts were returned. Try again with more specific source text.");
-  }
-
-  const completedAt = performance.now();
-  const reportedServiceTime = response.headers.get("x-envoy-upstream-service-time");
-  // Non-streaming header wait can include connection, queueing, and generation.
-  // Keep one timing line per successful comparison; never log source text or credentials.
-  console.info("[SourceLens timing]", JSON.stringify({
-    providerHeadersMs: Math.round(headersReceivedAt - startedAt),
-    providerBodyMs: Math.round(bodyReceivedAt - headersReceivedAt),
-    processingMs: Math.round(completedAt - bodyReceivedAt),
-    totalMs: Math.round(completedAt - startedAt),
-    upstreamReportedMs: reportedServiceTime !== null && Number.isFinite(Number(reportedServiceTime)) ? Number(reportedServiceTime) : undefined,
-    promptTokens: usage?.prompt_tokens,
-    completionTokens: usage?.completion_tokens,
-    reasoningTokens: usage?.completion_tokens_details?.reasoning_tokens,
-  }));
-
-  return result;
 }

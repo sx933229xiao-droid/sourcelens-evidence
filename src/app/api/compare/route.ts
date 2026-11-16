@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { comparisonRequestSchema, MAX_SOURCE_LENGTH } from "@/lib/comparison-schema";
+import { comparisonRequestSchema } from "@/lib/comparison-schema";
 import { compareSources, ComparisonError } from "@/lib/llm";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   const parsed = comparisonRequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: `Add both sources, using between 1 and ${MAX_SOURCE_LENGTH.toLocaleString("en-US")} characters per source.` },
+      { error: "Add text to both sources before comparing." },
       { status: 400 },
     );
   }

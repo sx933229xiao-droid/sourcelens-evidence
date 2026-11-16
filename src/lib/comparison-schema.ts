@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-export const MAX_SOURCE_LENGTH = 10_000;
+export const COMPARISON_TIMEOUT_MS = 240_000;
+export const COMPARISON_CLIENT_TIMEOUT_MS = 255_000;
 
 export const relationships = [
   "agreement",
@@ -21,7 +22,7 @@ export const relationshipLabels: Record<Relationship, string> = {
   needs_review: "Needs review",
 };
 
-const sourceText = z.string().min(1).max(MAX_SOURCE_LENGTH).refine(
+const sourceText = z.string().min(1).refine(
   (value) => value.trim().length > 0,
   "Enter source text, not just whitespace.",
 );

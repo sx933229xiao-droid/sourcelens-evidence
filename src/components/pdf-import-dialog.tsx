@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FileText, LoaderCircle, X } from "lucide-react";
-import { MAX_SOURCE_LENGTH } from "@/lib/comparison-schema";
 import { AUTO_PREVIEW_PAGE_LIMIT, type PdfSession } from "@/lib/pdf-import";
 import type { ImportedSourceFile } from "@/lib/project-store";
 
@@ -32,8 +31,7 @@ export function PdfImportDialog({ fileName, session, onConfirm, onCancel }: PdfI
   const validRange = /^\d+$/.test(from) && /^\d+$/.test(to) && first >= 1 && last >= first && last <= session.pageCount;
   const rangeChanged = !applied || first !== applied.fromPage || last !== applied.toPage;
   const edited = preview !== original;
-  const overLimit = preview.length > MAX_SOURCE_LENGTH;
-  const canImport = Boolean(applied && validRange && !rangeChanged && !extracting && !error && preview.trim() && !overLimit);
+  const canImport = Boolean(applied && validRange && !rangeChanged && !extracting && !error && preview.trim());
 
   useEffect(() => {
     alive.current = true;
@@ -75,7 +73,10 @@ export function PdfImportDialog({ fileName, session, onConfirm, onCancel }: PdfI
         </header>
         <div className="pdf-range-bar">
           <div className="pdf-range-inputs"><label>From page<input type="number" min={1} max={session.pageCount} step={1} value={from} onChange={(event) => { setFrom(event.target.value); setError(null); }} disabled={extracting} /></label><span aria-hidden="true">—</span><label>To page<input type="number" min={1} max={session.pageCount} step={1} value={to} onChange={(event) => { setTo(event.target.value); setError(null); }} disabled={extracting} /></label></div>
-          <button type="button" className="button button-secondary" disabled={!validRange || extracting} onClick={() => { void extractRange(first, last); }}>{extracting ? <LoaderCircle size={14} className="spinner" aria-hidden="true" /> : null}{extracting ? "Extracting…" : "Extract selected pages"}</button>
+          <div className="pdf-extract-actions">
+            <button type="button" className="button button-secondary" disabled={extracting} onClick={() => { setFrom("1"); setTo(String(session.pageCount)); void extractRange(1, session.pageCount); }}>Extract all pages</button>
+            <button type="button" className="button button-secondary" disabled={!validRange || extracting} onClick={() => { void extractRange(first, last); }}>{extracting ? <LoaderCircle size={14} className="spinner" aria-hidden="true" /> : null}{extracting ? "Extracting…" : "Extract selected pages"}</button>
+          </div>
         </div>
         <div className="pdf-preview-info" role="status">{extracting ? `Extracting page ${progress.done} of ${progress.total} in this range…` : !applied ? "Choose a range, then extract only those pages. Your current source stays here until you confirm." : rangeChanged ? "Apply the new page range before importing. Extracting again replaces preview edits." : `Previewing pages ${applied.fromPage}–${applied.toPage}. Review and edit the text before importing.`}</div>
         {!validRange && <p className="pdf-message" role="alert">Choose whole page numbers from 1 to {session.pageCount}, with the start before or equal to the end.</p>}
@@ -83,9 +84,9 @@ export function PdfImportDialog({ fileName, session, onConfirm, onCancel }: PdfI
         {!error && emptyPages > 0 && <p className="pdf-message">{emptyPages} selected {emptyPages === 1 ? "page has" : "pages have"} no extractable text. Review the preview for missing content.</p>}
         {edited && !rangeChanged && <p className="pdf-edit-note">Preview edited · the imported source will be marked Edited.</p>}
         <label className="sr-only" htmlFor="pdf-text-preview">PDF text preview</label>
-        <textarea id="pdf-text-preview" className="pdf-preview" value={preview} disabled={!applied || extracting} spellCheck={false} onChange={(event) => setPreview(event.target.value)} placeholder="Text from your selected pages will appear here. Review the reading order and remove any text you do not need." aria-invalid={overLimit} aria-describedby="pdf-character-count" />
+        <textarea id="pdf-text-preview" className="pdf-preview" value={preview} disabled={!applied || extracting} spellCheck={false} onChange={(event) => setPreview(event.target.value)} placeholder="Text from your selected pages will appear here. Review the reading order and remove any text you do not need." aria-describedby="pdf-character-count" />
         <footer className="pdf-dialog-footer">
-          <p id="pdf-character-count" className={overLimit ? "pdf-character-count over-limit" : "pdf-character-count"}>{preview.length.toLocaleString("en-US")} / {MAX_SOURCE_LENGTH.toLocaleString("en-US")} characters{overLimit && <span>Choose fewer pages or shorten the preview. Text is never truncated.</span>}</p>
+          <p id="pdf-character-count" className="pdf-character-count">{preview.length.toLocaleString("en-US")} characters</p>
           <div><button type="button" className="button button-secondary" onClick={onCancel}>Cancel</button><button type="submit" className="button button-primary" disabled={!canImport}>Use text</button></div>
         </footer>
       </form>

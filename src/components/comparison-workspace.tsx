@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, CircleAlert, FlaskConical, LoaderCircle, RotateCcw, X } from "lucide-react";
 import { FindingsPanel } from "./findings-panel";
 import { SourcePanel, type ExcerptLocation } from "./source-panel";
 import { ProjectToolbar, type SaveState } from "./project-toolbar";
-import { MAX_SOURCE_LENGTH, type ComparisonResult, type SourceId } from "@/lib/comparison-schema";
+import { COMPARISON_CLIENT_TIMEOUT_MS, type ComparisonResult, type SourceId } from "@/lib/comparison-schema";
 import { example } from "@/lib/example";
 import { deleteProject, getActiveProjectId, getProject, listProjects, saveProject, setActiveProjectId, type ImportedSourceFile, type ProjectSummary, type ResearchProject } from "@/lib/project-store";
 import { buildMarkdownReport, reportFileName } from "@/lib/markdown-report";
 
 type Connection = "checking" | "configured" | "connected" | "missing" | "unavailable";
+type ActiveComparison = { controller: AbortController; projectId: string; timeoutId: number | null };
 
 const connectionLabels: Record<Connection, string> = {
   checking: "Checking AI configuration",
@@ -50,13 +51,15 @@ export function ComparisonWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [connection, setConnection] = useState<Connection>("checking");
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [comparisonStartedAt, setComparisonStartedAt] = useState<number | null>(null);
+  const [comparisonNotice, setComparisonNotice] = useState<string | null>(null);
   const [locatedExcerpt, setLocatedExcerpt] = useState<ExcerptLocation | null>(null);
   const projectRef = useRef<ResearchProject | null>(null);
   const dirtyRef = useRef(false);
   const saveTimer = useRef<number | null>(null);
   const pendingSave = useRef<Promise<void> | null>(null);
   const deletingProjectId = useRef<string | null>(null);
+  const activeComparison = useRef<ActiveComparison | null>(null);
   const sourceARef = useRef<HTMLTextAreaElement>(null);
   const sourceBRef = useRef<HTMLTextAreaElement>(null);
 
@@ -73,7 +76,7 @@ export function ComparisonWorkspace() {
     setSaveState(saved ? "saved" : "idle");
     setStorageError(null);
     setError(null);
-    setElapsedSeconds(0);
+    setComparisonNotice(null);
     setLocatedExcerpt(null);
   }
 
@@ -171,23 +174,21 @@ export function ComparisonWorkspace() {
       .catch(() => setConnection("unavailable"));
   }, []);
 
-  useEffect(() => {
-    if (!loading) return;
-    const startedAt = Date.now();
-    const timer = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
-    return () => clearInterval(timer);
-  }, [loading]);
+  useEffect(() => () => {
+    const active = activeComparison.current;
+    activeComparison.current = null;
+    if (active?.timeoutId !== null && active?.timeoutId !== undefined) window.clearTimeout(active.timeoutId);
+    active?.controller.abort();
+  }, []);
 
   const busy = loading || importing || restoring || transitioning;
   const hasInput = Boolean(sources.sourceA || sources.sourceB);
   const canCompare = Boolean(sources.sourceA.trim() && sources.sourceB.trim())
-    && sources.sourceA.length <= MAX_SOURCE_LENGTH
-    && sources.sourceB.length <= MAX_SOURCE_LENGTH
     && !busy;
 
-  function updateSource(source: SourceId, value: string, file?: ImportedSourceFile) {
+  const updateSource = useCallback((source: SourceId, value: string, file?: ImportedSourceFile) => {
     const current = projectRef.current;
-    if (!current || loading || restoring || transitioning) return;
+    if (!current || activeComparison.current || restoring || transitioning) return;
     const existingFile = current.sourceFiles[source];
     const updated = changeProject({
       ...current,
@@ -197,9 +198,10 @@ export function ComparisonWorkspace() {
       isExample: false,
     });
     setError(null);
+    setComparisonNotice(null);
     setLocatedExcerpt(null);
     if (file !== undefined) void persist(updated).catch(() => {});
-  }
+  }, [restoring, transitioning]);
 
   function hasResearchContent(current: ResearchProject): boolean {
     return Boolean(current.sources.sourceA.trim() || current.sources.sourceB.trim() || current.analysis);
@@ -212,6 +214,7 @@ export function ComparisonWorkspace() {
     const updated = changeProject({ ...current, sources: { ...example }, sourceFiles: { A: null, B: null }, analysis: null, isExample: true });
     setLocatedExcerpt(null);
     setError(null);
+    setComparisonNotice(null);
     void persist(updated).catch(() => {});
   }
 
@@ -222,6 +225,7 @@ export function ComparisonWorkspace() {
     const updated = changeProject({ ...current, sources: { sourceA: "", sourceB: "" }, sourceFiles: { A: null, B: null }, analysis: null, isExample: false });
     setLocatedExcerpt(null);
     setError(null);
+    setComparisonNotice(null);
     void persist(updated).catch(() => {});
     sourceARef.current?.focus();
   }
@@ -311,29 +315,59 @@ export function ComparisonWorkspace() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  function finishComparison(active: ActiveComparison): boolean {
+    if (activeComparison.current !== active) return false;
+    activeComparison.current = null;
+    if (active.timeoutId !== null) window.clearTimeout(active.timeoutId);
+    setLoading(false);
+    setComparisonStartedAt(null);
+    return true;
+  }
+
+  function cancelComparison() {
+    const active = activeComparison.current;
+    if (!active || !finishComparison(active)) return;
+    active.controller.abort();
+    setComparisonNotice("Comparison cancelled. Your sources and any previous analysis are unchanged.");
+  }
+
   async function compare() {
     const current = projectRef.current;
-    if (!canCompare || !current) return;
+    if (!canCompare || !current || activeComparison.current) return;
+    const active: ActiveComparison = { controller: new AbortController(), projectId: current.id, timeoutId: null };
+    activeComparison.current = active;
     setLoading(true);
-    setElapsedSeconds(0);
+    setComparisonStartedAt(Date.now());
     setError(null);
+    setComparisonNotice(null);
+    active.timeoutId = window.setTimeout(() => {
+      if (!finishComparison(active)) return;
+      active.controller.abort();
+      setError("The comparison did not respond within 255 seconds. Your sources and any previous analysis are unchanged; you can try again.");
+    }, COMPARISON_CLIENT_TIMEOUT_MS);
 
     try {
       await flushSave().catch(() => {});
+      if (activeComparison.current !== active) return;
       const response = await fetch("/api/compare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(current.sources),
+        signal: active.controller.signal,
       });
-      const payload = await response.json();
+      const payload = await response.json().catch(() => {
+        throw new Error("The server response could not be read. Your sources and any previous analysis are unchanged; please try again.");
+      });
+      if (activeComparison.current !== active || projectRef.current?.id !== active.projectId) return;
       if (!response.ok) throw new Error(payload.error || "This comparison could not be completed. Please try again.");
+      finishComparison(active);
       const updated = changeProject({ ...current, analysis: { result: payload as ComparisonResult, completedAt: Date.now() } });
       setConnection("connected");
       await persist(updated).catch(() => {});
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The connection was interrupted. Your sources are still here; please try again.");
+      if (activeComparison.current === active) setError(cause instanceof Error ? cause.message : "The connection was interrupted. Your sources and any previous analysis are unchanged; please try again.");
     } finally {
-      setLoading(false);
+      finishComparison(active);
     }
   }
 
@@ -381,13 +415,14 @@ export function ComparisonWorkspace() {
           {isExample && <div className="example-notice"><FlaskConical size={13} aria-hidden="true" /><span><strong>Fictional example</strong><span className="example-notice-divider">/</span>Competition application rules. Compare to generate a real AI analysis.</span></div>}
 
           {error && <div className="error-notice" role="alert"><CircleAlert size={18} aria-hidden="true" /><div><strong>Comparison unavailable</strong><p>{error}</p></div><button type="button" className="dismiss-error" onClick={() => setError(null)} aria-label="Dismiss error"><X size={16} aria-hidden="true" /></button></div>}
+          {comparisonNotice && <p className="comparison-notice" role="status">{comparisonNotice}</p>}
 
           <div className={`workspace-grid${result ? " has-results" : ""}`}>
             <div className="sources-grid" key={project?.id ?? "restoring"}>
-              <SourcePanel source="A" value={sources.sourceA} onChange={(value) => updateSource("A", value)} onImport={(value, file) => updateSource("A", value, file)} onImportingChange={setImporting} importedFile={sourceFiles.A} readOnly={busy} inputRef={sourceARef} location={locatedExcerpt?.source === "A" ? locatedExcerpt : null} />
-              <SourcePanel source="B" value={sources.sourceB} onChange={(value) => updateSource("B", value)} onImport={(value, file) => updateSource("B", value, file)} onImportingChange={setImporting} importedFile={sourceFiles.B} readOnly={busy} inputRef={sourceBRef} location={locatedExcerpt?.source === "B" ? locatedExcerpt : null} />
+              <SourcePanel source="A" value={sources.sourceA} onChange={updateSource} onImport={updateSource} onImportingChange={setImporting} importedFile={sourceFiles.A} readOnly={busy} inputRef={sourceARef} location={locatedExcerpt?.source === "A" ? locatedExcerpt : null} />
+              <SourcePanel source="B" value={sources.sourceB} onChange={updateSource} onImport={updateSource} onImportingChange={setImporting} importedFile={sourceFiles.B} readOnly={busy} inputRef={sourceBRef} location={locatedExcerpt?.source === "B" ? locatedExcerpt : null} />
             </div>
-            <FindingsPanel result={result} loading={loading} elapsedSeconds={elapsedSeconds} onLocate={locateExcerpt} />
+            <FindingsPanel result={result} loading={loading} startedAt={comparisonStartedAt} onCancel={cancelComparison} onLocate={locateExcerpt} />
           </div>
 
           <div className="workspace-notes">
@@ -397,7 +432,7 @@ export function ComparisonWorkspace() {
         </form>
       </main>
 
-      <footer className="app-footer"><span className="version-label">SourceLens <span>V0.4</span></span><p>Projects stay in this browser. Sources are sent to AI only when you compare.</p><a href="https://github.com/sx933229xiao-droid/sourcelens-evidence" target="_blank" rel="noreferrer">Project on GitHub <ArrowRight size={12} aria-hidden="true" /></a></footer>
+      <footer className="app-footer"><span className="version-label">SourceLens <span>V0.5</span></span><p>Projects stay in this browser. Sources are sent to AI only when you compare.</p><a href="https://github.com/sx933229xiao-droid/sourcelens-evidence" target="_blank" rel="noreferrer">Project on GitHub <ArrowRight size={12} aria-hidden="true" /></a></footer>
       <span className="sr-only" role="status" aria-live="polite">{result && !loading ? `${result.findings.length} findings with matching source excerpts.` : ""}</span>
     </div>
   );
