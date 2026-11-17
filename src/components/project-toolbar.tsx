@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Download, FolderOpen, LoaderCircle, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Download, FolderOpen, LoaderCircle, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import type { ProjectSummary, ResearchProject } from "@/lib/project-store";
 
 export type SaveState = "restoring" | "idle" | "saving" | "saved" | "error";
@@ -16,14 +16,17 @@ type ProjectToolbarProps = {
   onRename: (name: string) => Promise<boolean>;
   onDelete: () => Promise<void>;
   onExport: () => void;
+  onBackup: () => void;
+  onRestore: (file: File) => Promise<void>;
 };
 
 const saveLabels: Record<SaveState, string> = { restoring: "Opening project…", idle: "Not saved yet", saving: "Saving…", saved: "Saved locally", error: "Save failed" };
 
-export function ProjectToolbar({ project, projects, saveState, disabled, onSelect, onCreate, onRename, onDelete, onExport }: ProjectToolbarProps) {
+export function ProjectToolbar({ project, projects, saveState, disabled, onSelect, onCreate, onRename, onDelete, onExport, onBackup, onRestore }: ProjectToolbarProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const nameRef = useRef<HTMLInputElement>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { setName(project?.name ?? ""); }, [project?.id, project?.name]);
   useEffect(() => { if (editing) { nameRef.current?.focus(); nameRef.current?.select(); } }, [editing]);
 
@@ -51,10 +54,13 @@ export function ProjectToolbar({ project, projects, saveState, disabled, onSelec
         {!editing && <button type="button" className="project-action" disabled={disabled} onClick={async () => { if (await onCreate()) setEditing(true); }}><Plus size={13} aria-hidden="true" />New<span className="project-action-extra"> Project</span></button>}
         {!editing && <button type="button" className="project-action" disabled={disabled || !project} onClick={() => { setName(project?.name ?? ""); setEditing(true); }} title="Rename project"><Pencil size={12} aria-hidden="true" />Rename</button>}
         {!editing && <button type="button" className="project-action project-delete" disabled={disabled || !project} onClick={() => { void onDelete(); }} title="Delete project"><Trash2 size={12} aria-hidden="true" /><span className="sr-only">Delete project</span></button>}
+        <input ref={backupInputRef} type="file" accept=".sourcelens.json,.json,application/json" hidden disabled={disabled} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void onRestore(file); }} />
+        {!editing && <button type="button" className="project-action" disabled={disabled} onClick={() => backupInputRef.current?.click()} title="Restore a project as a new copy"><Upload size={12} aria-hidden="true" />Restore project</button>}
       </div>
       <div className="project-tools">
         <span className={`save-status save-${saveState}`} role="status" aria-live="polite">{saveState === "saving" || saveState === "restoring" ? <LoaderCircle size={12} className="spinner" aria-hidden="true" /> : saveState === "saved" ? <Check size={12} aria-hidden="true" /> : null}{saveLabels[saveState]}</span>
         <button type="button" className="project-export" disabled={disabled || !project?.analysis} onClick={onExport}><Download size={13} aria-hidden="true" />Export Markdown</button>
+        <button type="button" className="project-export" disabled={disabled || !project} onClick={onBackup} title="Download the complete project as .sourcelens.json"><Download size={13} aria-hidden="true" />Export backup</button>
       </div>
     </section>
   );

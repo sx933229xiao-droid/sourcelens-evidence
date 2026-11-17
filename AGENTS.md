@@ -10,7 +10,7 @@
 
 ## 产品与当前基线
 
-- 已实现 V0.6：Workspace 编辑资料与分析，Evidence Explorer 独立导航、并排证据、人工审阅与组合筛选；保留 V0.5 完整导入和可取消单次全文分析。实际验证范围见 README；不把本地请求检查写成真实 AI 验收。
+- 已实现 V0.7：在 V0.6 双模式与人工审阅上增加完整 JSON 备份恢复、PDF 页码索引与具体引文定位；保留完整导入和可取消单次全文分析。实际验证范围见 README；不把本地校验结果写成真实 AI 验收。
 - 产品比较资料中的陈述关系，不裁定客观真伪。信息缺失不等于冲突，不同年份或适用条件应区分。
 - 使用 Next.js App Router、React、TypeScript、Tailwind CSS、自定义 CSS 和 Zod；原生 IndexedDB 仅在浏览器保存项目，无云数据库、账户、多 Agent 或任务队列。
 - 每项目保留两份当前文本、文件名及 Edited 标记、最新成功结果和分析时间。恢复时原样保留 Findings 与 omittedFindings，不重复分析或重新计算遗漏数。资料实际变更时清空分析及标注；不保存原文件、历史版本或原始模型响应。
@@ -18,8 +18,12 @@
 - 有实际人工标记或备注时，首次修改原文、确认导入替换或重新分析前必须提供可取消的确认；无标注不增加确认。新分析成功创建全新 analysis，不继承旧标注；失败和取消保留旧标注。Clear / Try Example / 删除沿用单次确认，准确说明人工内容的去除。
 - 有分析的项目及新成功分析进入 Explorer，无分析进入 Workspace。模式、筛选及选中项只保存在内存；原文定位跳回 Workspace，返回 Explorer 保留选择。标注变化使当前项不匹配时保留详情；主动改筛选条件才选择匹配项。
 - TXT / Markdown 和 PDF 均保留 50 MB 文件大小保护，不设置字符数量上限。PDF 先读取总页数，最多 5 页自动全文预览；长 PDF 可主动提取全文或连续页段。所有 PDF 均需预览确认；取消不修改当前资料或分析。
-- PDF 元信息为 sourceFiles 中可选的 pdf: { pageCount, fromPage, toPage }，兼容旧 IndexedDB v1 记录。仅保存选中文本和范围，不存 PDF、未选中全文或解析中间状态。页码按文件顺序计数；预览删改显示 Edited。
-- 阅读视图与编辑器使用同一文本；View in source 切到 Read 并高亮首次逐字匹配，定位/切换视图不写库。旧分析可用于验证阅读交互，无需额外消耗 AI 额度。秒表在独立状态组件更新，资料面板复用稳定回调与 memo，避免无关长文本重渲染。
+- PDF 元信息为 sourceFiles 中可选的 pdf: { pageCount, fromPage, toPage, pageMap? }，沿用 IndexedDB v1。pageMap 只存全文 UTF-8 SHA-256 和各物理页 UTF-16 半开区间，不存 PDF、逐页重复全文或解析对象；生成位置必须计入原有逐页 trim、页间分隔符和全文 trim。页码按文件顺序计数，不是印刷页标。
+- PDF 预览最终文本不变才附带索引；导入后实际编辑通过既有标注保护确认才删除索引，保留文件名与范围。取消、备注和标记不使索引失效；普通撤销不自动恢复已删索引。旧项目缺索引仍正常使用，不能按文本长度或范围反推页码。
+- 引文按全部逐字出现位置分别求页段；跨页的一次匹配与不同页的多次匹配不能混为一谈。Explorer 可选具体出现位置，View in source 传可选 start 并再次验证精确文本；Markdown 列出可信页段或全部候选，无索引保持旧格式。
+- Export backup 导出当前内存完整 .sourcelens.json，格式 sourcelens-project/version 1；包含未保存备注但不包含原 PDF、密钥或视图状态。Restore project 核心数据/引用/标注关联不合法时拒绝，只有可选 PDF 索引无效则删除索引、恢复所有其余数据并提示页码不可用。
+- 恢复总是新 UUID，重名加 (restored) 及序号，保留原分析时间和遗漏数，不重新调用 AI。先保存当前待保存内容，再用 projects.add 与 meta 活动 ID 在同一事务提交，成功后才切换。大于 100 MB 的备份先确认再读取，不沿用 50 MB 资料文件上限；不加整包校验和或新数据库。
+- 阅读视图与编辑器使用同一文本；View in source 切到 Read 并高亮选定的逐字出现位置，未指定位置时沿用首次匹配，定位/切换视图不写库。旧分析可用于验证阅读交互，无需额外消耗 AI 额度。秒表在独立状态组件更新，资料面板复用稳定回调与 memo，避免无关长文本重渲染。
 - 文本编辑采用 500ms 防抖，写入绑定捕获的项目 ID，切换前提交待保存内容；没有通用任务队列。Markdown 导出全部发现，不受界面筛选影响；仅为实际有标注的 Finding 添加人工内容，无标注旧项目导出格式保持不变，导出读取最新内存备注。
 - AI 为服务端一次非流式 Chat Completions 调用，密钥只在服务端读取。输入为 `{ sourceA, sourceB }`，成功响应包含 `findings` 和 `omittedFindings`。
 - 比较直接提交两份完整资料，保持通用 OpenAI-compatible 架构；不自动截断、压缩、分块或重试。容量由配置的模型服务决定；明确的容量拒绝保留全文并提示用户编辑或选页，不做特定供应商容量探测。
@@ -38,6 +42,8 @@
 | `src/lib/project-store.ts`、`src/lib/markdown-report.ts` | 本地项目结构与 IndexedDB、完整 Markdown 报告 |
 | `src/components/source-panel.tsx` | 资料导入、Read/Edit、原文高亮、文件元信息与错误提示 |
 | `src/lib/pdf-import.ts`、`src/components/pdf-import-dialog.tsx` | PDF 页数读取、选页提取、可编辑预览、取消与 Worker 清理 |
+| `src/lib/pdf-page-map.ts` | 最终文本页区间、SHA-256 绑定、精确出现位置与页码摘要 |
+| `src/lib/project-backup.ts` | 备份格式、核心一致性校验、可选索引容错、恢复命名 |
 | `scripts/prepare-pdfjs-assets.mjs` | 从安装包准备 public/pdfjs 下的 Worker/CMap/字体；生成资源不提交 |
 | `src/components/findings-panel.tsx` | Workspace 分析摘要与独立计时 / 取消 |
 | `src/components/evidence-explorer.tsx` | Findings 导航、并排证据、人工审阅、备注与组合筛选 |
@@ -50,7 +56,7 @@
 ## 工作方式与必要验证
 
 - 默认单代理，复用现有实现，只完成当前用户任务。不要额外创建需求文档、测试框架、独立复核或治理流程。
-- 除用户明确要求外，保持模型、推理参数、提示词、校验逻辑和服务端架构不变。V0.6 只改用户可见错误文案，未调整模型行为；不自动开展供应商容量、压力测试或真实调用。
+- 除用户明确要求外，保持模型、推理参数、提示词、证据校验和服务端架构不变。V0.7 备份与页码逻辑留在浏览器，未调整 AI 行为；不自动开展供应商容量、压力测试或真实调用。
 - 文档修改运行 `git diff --check` 并查看差异；应用修改运行 `npm run build`（包含 TypeScript 检查），再实际操作受影响的主流程。已有验证通过后，不重复扩大测试。
 - 仅在任务需要验证 AI 时发起真实调用；可复用仍然打开的真实结果页。Try Example 只填虚构资料，不能用模拟发现代替真实调用。
 - 真实示例的预期关系：截止日期潜在冲突、个人参赛资格一致、团队资格为 B 的单方信息；判断与原文引用要分别检查。

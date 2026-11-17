@@ -456,3 +456,16 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-he
   .finding-detail-header h2 { font-size: 21px; }
   .confirmation-dialog { padding: 22px; }
 }
+
+.project-transfer-notice { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px; padding: 13px 16px; border: 1px solid #d8e2ce; border-radius: 5px; background: #f4f8ef; color: #5a7350; font-size: 12px; line-height: 1.8; }
+.project-transfer-notice p { flex: 1; overflow-wrap: anywhere; }
+.project-transfer-notice button { padding: 3px 0; background: transparent; color: inherit; flex-shrink: 0; }
+.project-transfer-notice.warning { border-color: #e4d8bb; background: #faf6ed; color: #8c724b; }
+.project-transfer-notice.error { border-color: #e4d5c5; background: #fcf8f1; color: #95603c; }
+.quote-pages { margin: 0 0 10px; color: #617653; font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
+.quote-pages.unavailable { color: #929c86; }
+.occurrence-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 0 0 11px; color: #7a886d; font-size: 10px; }
+.occurrence-controls button { min-height: 27px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 3px; background: #fff; color: #617753; font-size: 10px; }
+.occurrence-controls button:disabled { opacity: .4; }
+.occurrence-controls input { width: 53px; min-height: 27px; margin: 0 3px; padding: 3px 5px; border: 1px solid var(--border); border-radius: 3px; color: #4f6344; background: #fff; font-size: 10px; }
+.project-tools { flex-wrap: wrap; }

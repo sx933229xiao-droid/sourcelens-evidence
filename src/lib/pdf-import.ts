@@ -1,7 +1,9 @@
+import { createPdfPageMap, indexPdfText, type PdfPageMap } from "@/lib/pdf-page-map";
+
 export const MAX_PDF_BYTES = 50 * 1024 * 1024;
 export const AUTO_PREVIEW_PAGE_LIMIT = 5;
 
-export type PdfExtraction = { text: string; emptyPages: number[] };
+export type PdfExtraction = { text: string; emptyPages: number[]; pageMap?: PdfPageMap };
 export type PdfSession = {
   pageCount: number;
   extract: (fromPage: number, toPage: number, onProgress: (done: number, total: number) => void) => Promise<PdfExtraction>;
@@ -62,7 +64,10 @@ export async function openPdf(file: File, signal: AbortSignal): Promise<PdfSessi
           } finally { page.cleanup(); }
           onProgress(number - fromPage + 1, toPage - fromPage + 1);
         }
-        return { text: texts.join("\n\n").trim(), emptyPages };
+        const indexed = indexPdfText(texts, fromPage);
+        const pageMap = await createPdfPageMap(indexed.text, indexed.pages).catch(() => undefined);
+        checkAborted(signal);
+        return { text: indexed.text, emptyPages, pageMap };
       },
     };
   } catch (cause) {

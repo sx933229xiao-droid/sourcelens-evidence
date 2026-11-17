@@ -4,7 +4,7 @@
 
 SourceLens is an independently developed AI workspace for comparing claims across two sources and tracing findings back to their original evidence. It is built for students, researchers, and creators who need to check what different sources actually say.
 
-Prepare source documents in Workspace, then review their findings in Evidence Explorer. Compare original excerpts side by side, open their context, mark findings reviewed or important, and add research notes. Local projects restore your sources, analysis, and review; Markdown reports include the evidence and any annotations. SourceLens organizes agreements, potential conflicts, context differences, single-source claims, and statements that need review.
+Prepare source documents in Workspace, then review their findings in Evidence Explorer. Compare original excerpts side by side, open their context, mark findings reviewed or important, and add research notes. Back up complete projects as JSON and restore them as new copies. PDF imports record page positions so exact excerpts can lead to their physical PDF pages, including cross-page and repeated matches. SourceLens organizes agreements, potential conflicts, context differences, single-source claims, and statements that need review.
 
 ## Demo
 
@@ -24,12 +24,17 @@ AI is used to compare the meaning of differently worded claims and explain diffe
 
 ## Development Status
 
-**V0.6 running locally — a dedicated Evidence Explorer, saved human reviews, combined filters, and protected annotations.**
+**V0.7 running locally — complete project backups, safe restoration, and exact PDF page references.**
 
-The Next.js application runs locally and its production build passes. V0.6 separates source preparation from evidence review while retaining V0.5 long-document import and full-text comparison. Existing real-model findings were restored in the new Explorer; controlled local responses verified analysis replacement, cancellation, and failure without new external inference. The provider configuration, model, inference parameters, prompt, and evidence-validation rules are unchanged. The demo image above shows the V0.6 Evidence Explorer using those saved real-model findings.
+The Next.js application runs locally and its production build passes. V0.7 adds full-project backup and restoration and PDF page mapping to the existing workspace and review tools. Verification used a real PDF and explicitly local page-mapping fixtures, with no new model inference. The provider configuration, model, inference parameters, prompt, and evidence-validation rules are unchanged. The demo image above shows the earlier V0.6 review interface using saved real-model findings.
 
 ### Implemented
 
+- Complete `.sourcelens.json` project backups, including both sources, Findings, human annotations, analysis time, and available PDF page indices. Export uses the latest in-memory project, including notes waiting for autosave.
+- Validated restoration as a new project with a new ID. Existing projects are never overwritten; duplicate names receive a restored-copy suffix. Creation and active-project selection commit in one IndexedDB transaction.
+- Core-data or finding-reference errors reject restoration. If only an optional PDF page index is invalid, the rest of the complete project is restored with a clear page-information warning.
+- PDF page references based on the exact imported text. Cross-page excerpts retain their page span; repeated excerpts expose each occurrence and can open the selected match in the source.
+- Source or preview edits invalidate page mapping. Older projects remain usable with unknown excerpt pages; original PDFs are not stored.
 - Workspace for source preparation and analysis; Evidence Explorer for reviewing results. Projects with a saved analysis open in Explorer, and new successful comparisons open it automatically.
 - Independent Findings navigation, side-by-side Source A / B excerpts, original-source location, and a distinct view for findings that cite only one source.
 - Per-finding Reviewed and Important marks and plain-text research notes, saved with the current analysis. Notes use the existing 500ms autosave; marks save immediately.
@@ -39,7 +44,7 @@ The Next.js application runs locally and its production build passes. V0.6 separ
 - Browser-local text PDF import up to 50 MB, using a locally served PDF.js Worker. Documents of up to five pages automatically preview all pages; longer documents show their page count first and offer full-document or selected-range extraction.
 - An editable PDF preview with inclusive page ranges, progress, cancellation, a live character count, and explicit confirmation, without a character limit.
 - Read / Edit source views. **View in source** opens Workspace, highlights the exact matching excerpt, and scrolls it into view; returning to Explorer retains the current selection and filters.
-- PDF file name, Edited status, and selected page range survive project switching and refresh; Markdown reports include this PDF provenance.
+- PDF file name, Edited status, selected page range, and available page index survive project switching, refresh, and backup restoration; Markdown reports include reliable per-excerpt page references.
 - Create, rename, switch, and delete local research projects from a compact toolbar. Each project contains two sources and its latest successful analysis.
 - Native IndexedDB storage with 500ms text autosave, immediate saves for imports and analysis, and submission of pending changes before switching projects. The interface distinguishes saving, saved, and failed writes.
 - Restore source text, file names, Edited markers, Findings, omitted-finding counts, and analysis time without calling AI again.
@@ -55,6 +60,15 @@ The Next.js application runs locally and its production build passes. V0.6 separ
 - Independent validation of findings. Invalid findings are omitted while valid findings remain visible; unreadable responses or responses with no usable findings return an error.
 - Desktop and narrow-screen layouts, loading feedback, file-size protection, and errors that preserve source text and any previous successful analysis.
 - Explorer places Findings navigation beside the review detail on desktop. Small screens stack navigation, detail, and the two sources; source preparation keeps two full-width source panels in Workspace.
+
+### V0.7 verification — November 17, 2026
+
+- One production build passed, including TypeScript checking. Lightweight checks cover complete backup round-trips, core-data rejection, optional-index recovery, UTF-16 positions, blank-page trimming, cross-page and repeated excerpts, and legacy Markdown compatibility. No dependency or test framework was added.
+- The real 14-page TraceMonkey PDF supplied 82,817 characters for a local page-index fixture. Its 39th exact `TraceMonkey` match showed PDF page 11 and highlighted character offset 65,736. A separate excerpt spanning pages 2–3 showed that range in Explorer and Markdown.
+- Browser export and restoration preserved full source text, Findings, original analysis time, omitted count, Reviewed / Important marks, and the latest multiline notes. Restoration created a new ID and a distinct name, retained the prior project, and survived refresh.
+- A mismatched page fingerprint restored the complete sources, analysis, and notes while removing the index and displaying a warning. An invalid source quote was rejected without changing the current project or project count.
+- Native browser PDF.js extraction of pages 2–3 produced 11,064 characters and a verified two-page index. Cancelling an annotated source edit retained its index; accepting the edit removed the analysis and index. Editing the PDF preview likewise imported complete edited text without stale page metadata.
+- At a 375px CSS viewport, the new project-transfer controls and stacked Explorer had no horizontal overflow. Local fixtures tested data and UI behavior; no new AI analysis, model-capacity probe, or pressure test was performed.
 
 ### V0.6 verification — November 16, 2026
 
@@ -166,9 +180,13 @@ Choose a local text-based `.pdf` file of up to 50 MB from either source's **Impo
 
 Every PDF requires preview confirmation before replacing a source. Review the reading order, adjust the range, or edit the preview. **Import text** is enabled when the applied range is valid and its preview contains non-whitespace text, without a character limit. Changing page inputs requires extracting that range before importing; extracting again replaces preview edits. If the current analysis has review marks or notes, replacing its source requires an additional confirmation. Cancel leaves the current source and analysis intact.
 
-PDF page numbers count pages in the file, starting at 1; they may differ from printed page labels. The imported source and Markdown report retain the file name and selected page range. Preview edits and later source edits are marked **Edited**. Page ranges describe the imported material, not a per-excerpt page map.
+PDF page numbers count pages in the file, starting at 1; they may differ from printed page labels. The source header identifies the imported range. Unedited V0.7 imports also record each page's character positions in the final text and bind them to a SHA-256 fingerprint of its UTF-8 bytes. This lets Explorer and Markdown identify pages for each exact excerpt.
 
-PDF imports open in **Read** mode. Use **Edit** to revise the same text. **View in source** opens Workspace in Read mode, highlights the first exact match, and scrolls to it. View changes do not modify the text, invalidate findings, or write another project version. Exact-quote validation applies to the final imported text. To select different PDF pages later, reimport the original file.
+If a quote occurs more than once, Explorer lists the candidate page ranges and provides Previous / Next and a match-number control. **View in source** opens that particular occurrence. Separate occurrences are not merged into one cross-page citation. Reports list all matching page ranges rather than treating the current UI selection as a unique origin.
+
+Preview edits and later source edits are marked **Edited** and remove page mapping. Cancelling an edit leaves the index intact. An older project without an index remains usable, but its quote pages are unknown; SourceLens does not infer page boundaries from text length or the imported range. Reimporting still replaces the source and invalidates its current analysis and review after any required confirmation.
+
+PDF imports open in **Read** mode. Use **Edit** to revise the same text. **View in source** opens Workspace in Read mode, highlights the selected exact match, and scrolls to it; sources without an occurrence selection use the first match. View changes do not modify the text, invalidate findings, or write another project version. Exact-quote validation applies to the final imported text. To select different PDF pages later, reimport the original file.
 
 ## Evidence Explorer and Reviews
 
@@ -190,19 +208,31 @@ Text edits save after a 500ms pause. Imports, successful analyses, renaming, and
 
 **Export Markdown** downloads the full current analysis, including project and source names, the original analysis time, all five relationship counts, Findings, corresponding original evidence, and the omitted-finding count. Findings with review marks or a nonempty note also include their human-review content; unannotated findings add no review block. Reports include the latest notes even before their autosave delay has elapsed. Export includes all findings regardless of the current filters. Full source documents are not appended, and exporting never calls AI.
 
+Reliable PDF quote pages are appended to the corresponding evidence labels. Multiple exact matches remain labelled as multiple matches. Without a verified index, no guessed page references are added, and older reports retain their previous format.
+
+## Project Backups and Restoration
+
+Use **Export backup** for a complete `.sourcelens.json` snapshot, including projects that do not yet have an analysis. It captures the current in-memory sources and review rather than requiring a successful local save. The file uses `format: "sourcelens-project"`, `version: 1`, an export timestamp, and the complete project data. It contains no provider credentials, original PDF bytes, or temporary view state.
+
+Choose **Restore project** and select the backup. SourceLens validates its format, version, project fields, finding excerpts, and review-index associations before saving. It preserves the original analysis and omitted count without calling AI. Restoration always creates a new ID; names are retained where possible, with `(restored)` and a sequence number used for collisions. The new record and active-project pointer are committed atomically after pending work in the current project has been saved.
+
+Invalid core data or source references reject the import and leave the current project available. An invalid optional PDF index is discarded independently, with a warning; complete source text, Findings, and human notes are kept. A fingerprint checks text/index consistency, not the authenticity of an external PDF that is no longer available.
+
+Backups do not inherit the source-file import limit. Files larger than 100 MB require confirmation before reading, and can be cancelled at that point. Browser memory and storage space still apply. Backups have structural and reference validation rather than a whole-file checksum, encryption, or cloud synchronization. Markdown is the readable report; JSON is the restorable project backup.
+
 ## Data and Credentials
 
-Projects are stored in this browser's IndexedDB, without a cloud database or accounts. Only current source text, file names and Edited markers, PDF page-range metadata where applicable, the latest analysis with its human annotations, and necessary project metadata are retained. Original files, unselected PDF text, old versions, raw provider responses, and generated reports are not stored. Imported files are read in the browser, without uploading the file to the app server. PDF parsing resources are released when preview is confirmed or cancelled. Only clicking **Compare Sources** sends the current source text to your configured AI provider; review marks and notes are not added to that request. The provider's own data policies apply. Application code does not log complete source text.
+Projects are stored in this browser's IndexedDB, without a cloud database or accounts. Only current source text, file names and Edited markers, PDF ranges and available page indices, the latest analysis with its human annotations, and necessary project metadata are retained. Original files, unselected PDF text, old versions, raw provider responses, and generated reports are not stored. Imported sources and project backups are read in the browser, without uploading their files to the app server. PDF parsing resources are released when preview is confirmed or cancelled. Only clicking **Compare Sources** sends the current source text to your configured AI provider; review marks, notes, and page indices are not added to that request. The provider's own data policies apply. Application code does not log complete source text.
 
-Local projects belong to the browser profile and exact site origin, including the port: `localhost` and `127.0.0.1` are separate storage locations. Clearing site data, private browsing, or browser storage eviction can remove saved projects. Use a consistent address and export useful reports. V0.6 is intended for editing in one tab and does not merge concurrent changes from multiple tabs or sync across devices. Projects have no arbitrary count limit or automatic expiration; delete unwanted projects to release their records.
+Local projects belong to the browser profile and exact site origin, including the port: `localhost` and `127.0.0.1` are separate storage locations. Clearing site data, private browsing, or browser storage eviction can remove saved projects. Use a consistent address and export backups of useful projects. V0.7 is intended for editing in one tab and does not merge concurrent changes from multiple tabs or sync across devices. Projects have no arbitrary count limit or automatic expiration; delete unwanted projects to release their records.
 
 API credentials are used only on the server. `.env.local` and other real environment files are ignored by Git; `.env.example` contains placeholders only. Never add credentials with a `NEXT_PUBLIC_` prefix or commit a real API key.
 
 ## Current Limits
 
-V0.6 compares two texts per project without an application character limit. UTF-8 TXT / Markdown and text-based PDF imports each have a 50 MB file limit; browser memory and local storage space still apply. The configured OpenAI-compatible service determines the available context and output capacity. SourceLens submits complete sources once and preserves them when analysis fails; it does not automatically shorten, compress, or split them. Research notes are plain text and belong to one current analysis; review history is not retained.
+V0.7 compares two texts per project without an application character limit. UTF-8 TXT / Markdown and text-based PDF imports each have a 50 MB file limit; browser memory and local storage space still apply. The configured OpenAI-compatible service determines the available context and output capacity. SourceLens submits complete sources once and preserves them when analysis fails; it does not automatically shorten, compress, or split them. Research notes are plain text and belong to one current analysis; review history is not retained.
 
-Scanned/image-only pages need OCR, and password-protected PDFs are unsupported. Complex columns, tables, and footnotes can affect extraction order; review and edit the preview. SourceLens displays extracted text, not original PDF page images, and does not reconstruct complex layouts. URL fetching, Word import, analysis history, project backup/import, and external fact checking are not implemented. Markdown reports are readable exports, not restorable project backups. AI can miss claims or misclassify relationships, and exact-quote validation can omit otherwise useful findings if the model alters their quotations. Review the original sources before relying on a conclusion.
+Scanned/image-only pages need OCR, and password-protected PDFs are unsupported. Complex columns, tables, and footnotes can affect extraction order; review and edit the preview. SourceLens displays extracted text, not original PDF page images, and does not reconstruct complex layouts. Page mapping is unavailable for edited text or older imports without recorded boundaries. URL fetching, Word import, analysis history, and external fact checking are not implemented. AI can miss claims or misclassify relationships, and exact-quote validation can omit otherwise useful findings if the model alters their quotations. Review the original sources before relying on a conclusion.
 
 ## Implementation
 
@@ -211,6 +241,8 @@ Scanned/image-only pages need OCR, and password-protected PDFs are unsupported. 
 - Native IndexedDB for local projects; no database or state-management dependency.
 - `pdfjs-dist` 6.5.438, loaded on demand in the browser; matching Worker and text resources served locally.
 - `src/lib/pdf-import.ts`: local document sessions, selected-page extraction, progress, and cleanup.
+- `src/lib/pdf-page-map.ts`: final-text page spans, UTF-8 SHA-256 consistency checks, and exact quote occurrence resolution.
+- `src/lib/project-backup.ts`: versioned project backup serialization and validation, with optional-index recovery.
 - `src/components/pdf-import-dialog.tsx`: page-range selection and editable preview confirmation.
 - `scripts/prepare-pdfjs-assets.mjs`: generated static resources for dev/build, excluded from Git.
 - `src/lib/project-store.ts`: project records and local storage operations.

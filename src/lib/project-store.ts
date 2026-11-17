@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { relationships } from "@/lib/comparison-schema";
+import { relationships, type SourceId } from "@/lib/comparison-schema";
+import { isPdfPageMapValid, pdfPageMapSchema } from "@/lib/pdf-page-map";
 
 const sourceFileSchema = z.object({
   name: z.string(),
@@ -8,6 +9,7 @@ const sourceFileSchema = z.object({
     pageCount: z.number().int().positive(),
     fromPage: z.number().int().positive(),
     toPage: z.number().int().positive(),
+    pageMap: pdfPageMapSchema.optional().catch(undefined),
   }).refine((range) => range.fromPage <= range.toPage && range.toPage <= range.pageCount).optional(),
 });
 
@@ -49,6 +51,31 @@ export const researchProjectSchema = z.object({
 
 export type ResearchProject = z.infer<typeof researchProjectSchema>;
 export type ProjectSummary = Pick<ResearchProject, "id" | "name" | "updatedAt">;
+
+export async function sanitizeProjectPageMaps(project: ResearchProject, original: ResearchProject = project): Promise<{ project: ResearchProject; invalidPageSources: SourceId[] }> {
+  let cleaned = project;
+  const invalidPageSources: SourceId[] = [];
+  for (const source of ["A", "B"] as const) {
+    const file = project.sourceFiles[source];
+    if (original.sourceFiles[source]?.pdf?.pageMap === undefined) continue;
+    if (file?.pdf?.pageMap && !file.edited && await isPdfPageMapValid(file.pdf.pageMap, project.sources[source === "A" ? "sourceA" : "sourceB"], file.pdf)) continue;
+    invalidPageSources.push(source);
+    if (file?.pdf) {
+      const pdf = { ...file.pdf };
+      delete pdf.pageMap;
+      cleaned = { ...cleaned, sourceFiles: { ...cleaned.sourceFiles, [source]: { ...file, pdf } } };
+    }
+  }
+  return { project: cleaned, invalidPageSources };
+}
+
+export function markSourceEdited(file: ImportedSourceFile | null): ImportedSourceFile | null {
+  if (!file) return null;
+  if (!file.pdf) return { ...file, edited: true };
+  const pdf = { ...file.pdf };
+  delete pdf.pageMap;
+  return { ...file, edited: true, pdf };
+}
 
 export function hasFindingReview(review: FindingReview | undefined): review is FindingReview {
   return Boolean(review && (review.reviewed || review.important || review.note.trim()));
@@ -135,11 +162,18 @@ export async function getProject(id: string): Promise<ResearchProject | null> {
   if (stored === undefined) return null;
   const project = researchProjectSchema.safeParse(stored);
   if (!project.success) throw new Error("This project could not be opened. Its stored data has been left intact.");
-  return project.data;
+  return (await sanitizeProjectPageMaps(project.data, stored as ResearchProject)).project;
 }
 
 export function saveProject(project: ResearchProject): Promise<void> {
   return write(["projects"], (transaction) => { transaction.objectStore("projects").put(project); });
+}
+
+export function insertRestoredProject(project: ResearchProject): Promise<void> {
+  return write(["projects", "meta"], (transaction) => {
+    transaction.objectStore("projects").add(project);
+    transaction.objectStore("meta").put(project.id, "activeProjectId");
+  });
 }
 
 export async function getActiveProjectId(): Promise<string | null> {

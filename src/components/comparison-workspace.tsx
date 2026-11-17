@@ -9,12 +9,26 @@ import { SourcePanel, type ExcerptLocation } from "./source-panel";
 import { ProjectToolbar, type SaveState } from "./project-toolbar";
 import { COMPARISON_CLIENT_TIMEOUT_MS, type ComparisonResult, type SourceId } from "@/lib/comparison-schema";
 import { example } from "@/lib/example";
-import { deleteProject, getActiveProjectId, getProject, hasAnnotations, listProjects, saveProject, setActiveProjectId, withFindingReview, type FindingReview, type ImportedSourceFile, type ProjectSummary, type ResearchProject } from "@/lib/project-store";
+import { deleteProject, getActiveProjectId, getProject, hasAnnotations, insertRestoredProject, listProjects, markSourceEdited, saveProject, setActiveProjectId, withFindingReview, type FindingReview, type ImportedSourceFile, type ProjectSummary, type ResearchProject } from "@/lib/project-store";
 import { buildMarkdownReport, reportFileName } from "@/lib/markdown-report";
+import { backupFileName, LARGE_BACKUP_BYTES, parseProjectBackup, restoredProjectName, serializeProjectBackup } from "@/lib/project-backup";
 
 type Connection = "checking" | "configured" | "connected" | "missing" | "unavailable";
 type ActiveComparison = { controller: AbortController; projectId: string; timeoutId: number | null };
 type PendingConfirmation = Confirmation & { resolve: (accepted: boolean) => void };
+
+function downloadFile(content: string, name: string, type: string) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function pageRecoveryNotice(sources: SourceId[]): string {
+  return sources.length ? ` PDF page information is unavailable for ${sources.map((source) => `Source ${source}`).join(" and ")}; the sources, findings, and review notes were kept.` : "";
+}
 
 const connectionLabels: Record<Connection, string> = {
   checking: "Checking AI configuration",
@@ -50,6 +64,7 @@ export function ComparisonWorkspace() {
   const [transitioning, setTransitioning] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("restoring");
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [transferNotice, setTransferNotice] = useState<{ kind: "success" | "warning" | "error"; text: string } | null>(null);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -99,6 +114,7 @@ export function ComparisonWorkspace() {
     setProject(next);
     setSaveState(saved ? "saved" : "idle");
     setStorageError(null);
+    setTransferNotice(null);
     setError(null);
     setComparisonNotice(null);
     setLocatedExcerpt(null);
@@ -228,7 +244,7 @@ export function ComparisonWorkspace() {
     const updated = changeProject({
       ...current,
       sources: { ...current.sources, [source === "A" ? "sourceA" : "sourceB"]: value },
-      sourceFiles: { ...current.sourceFiles, [source]: file !== undefined ? file : existingFile ? { ...existingFile, edited: true } : null },
+      sourceFiles: { ...current.sourceFiles, [source]: file !== undefined ? file : markSourceEdited(existingFile) },
       analysis: null,
       isExample: false,
     });
@@ -358,12 +374,40 @@ export function ComparisonWorkspace() {
   function exportReport() {
     const current = projectRef.current;
     if (!current?.analysis || busy) return;
-    const url = URL.createObjectURL(new Blob([buildMarkdownReport(current)], { type: "text/markdown;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = reportFileName(current.name);
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    downloadFile(buildMarkdownReport(current), reportFileName(current.name), "text/markdown;charset=utf-8");
+  }
+
+  async function exportBackup() {
+    const current = projectRef.current;
+    if (!current || busy) return;
+    setTransitioning(true);
+    setTransferNotice(null);
+    try {
+      const backup = await serializeProjectBackup(current);
+      downloadFile(backup.json, backupFileName(current.name), "application/json;charset=utf-8");
+      setTransferNotice({ kind: backup.invalidPageSources.length ? "warning" : "success", text: `Backup exported for “${current.name}”.` + pageRecoveryNotice(backup.invalidPageSources) });
+    } catch (cause) { setTransferNotice({ kind: "error", text: cause instanceof Error ? cause.message : "The project backup could not be created." }); }
+    finally { setTransitioning(false); }
+  }
+
+  async function restoreBackup(file: File) {
+    if (busy) return;
+    setTransitioning(true);
+    setTransferNotice(null);
+    try {
+      if (file.size > LARGE_BACKUP_BYTES && !await confirmAction({ title: "Open a large backup?", message: "This backup is larger than 100 MB. Reading it may use substantial browser memory. You can cancel before the file is read.", confirmLabel: "Read backup" })) return;
+      const validated = await parseProjectBackup(await file.text());
+      await flushSave();
+      const names = new Set(projects.map((item) => item.name));
+      const activeName = projectRef.current?.name;
+      if (activeName) names.add(activeName);
+      const restored: ResearchProject = { ...validated.project, id: crypto.randomUUID(), name: restoredProjectName(validated.project.name, names), updatedAt: Date.now() };
+      await insertRestoredProject(restored);
+      setProjects((current) => includeProject(current, restored));
+      adoptProject(restored, true);
+      setTransferNotice({ kind: validated.invalidPageSources.length ? "warning" : "success", text: `Restored “${restored.name}” as a new project.` + pageRecoveryNotice(validated.invalidPageSources) });
+    } catch (cause) { setTransferNotice({ kind: "error", text: cause instanceof Error ? cause.message : "The backup could not be restored. Your current project is unchanged." }); }
+    finally { setTransitioning(false); }
   }
 
   function finishComparison(active: ActiveComparison): boolean {
@@ -426,9 +470,11 @@ export function ComparisonWorkspace() {
     }
   }
 
-  function locateExcerpt(source: SourceId, quote: string) {
+  function locateExcerpt(source: SourceId, quote: string, start?: number) {
     const text = projectRef.current?.sources[source === "A" ? "sourceA" : "sourceB"];
-    if (text?.includes(quote)) { setLocatedExcerpt({ source, quote }); setMode("workspace"); }
+    if (text === undefined) return;
+    const position = start ?? text.indexOf(quote);
+    if (Number.isInteger(position) && position >= 0 && text.slice(position, position + quote.length) === quote) { setLocatedExcerpt({ source, quote, start }); setMode("workspace"); }
   }
 
   return (
@@ -446,7 +492,8 @@ export function ComparisonWorkspace() {
       </header>
 
       <main className="main-content">
-        <ProjectToolbar project={project} projects={projects} saveState={saveState} disabled={busy} onSelect={selectProject} onCreate={createProject} onRename={renameProject} onDelete={removeProject} onExport={exportReport} />
+        <ProjectToolbar project={project} projects={projects} saveState={saveState} disabled={busy} onSelect={selectProject} onCreate={createProject} onRename={renameProject} onDelete={removeProject} onExport={exportReport} onBackup={() => { void exportBackup(); }} onRestore={restoreBackup} />
+        {transferNotice && <div className={`project-transfer-notice ${transferNotice.kind}`} role={transferNotice.kind === "error" ? "alert" : "status"}><p>{transferNotice.text}</p><button type="button" onClick={() => setTransferNotice(null)} aria-label="Dismiss project message"><X size={15} aria-hidden="true" /></button></div>}
         {storageError && <div className="error-notice storage-notice" role="alert"><CircleAlert size={18} aria-hidden="true" /><div><strong>Could not save this project</strong><p>{storageError}</p></div><button type="button" className="storage-retry" disabled={busy} onClick={() => { void retrySaving(); }}>Retry</button></div>}
         <div className="workspace-modes" role="group" aria-label="Workspace mode"><button type="button" aria-pressed={mode === "workspace"} disabled={importing || restoring || transitioning || Boolean(confirmation)} onClick={() => setMode("workspace")}>Workspace</button><button type="button" aria-pressed={mode === "explorer"} disabled={!result || importing || restoring || transitioning || Boolean(confirmation)} onClick={() => setMode("explorer")}>Evidence Explorer</button></div>
         {error && <div className="error-notice" role="alert"><CircleAlert size={18} aria-hidden="true" /><div><strong>Could not complete the comparison</strong><p>{error}</p><p>Your sources, previous findings, and review notes are unchanged.</p></div><button type="button" className="dismiss-error" onClick={() => setError(null)} aria-label="Dismiss error"><X size={16} aria-hidden="true" /></button></div>}
@@ -484,10 +531,10 @@ export function ComparisonWorkspace() {
             <p><span className="notes-marker" aria-hidden="true" />SourceLens compares statements, not objective truth.</p>
             <p className="shortcut-hint"><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd><span>to compare</span></p>
           </div>
-        </form> : project?.analysis && <><div className="explorer-intro"><div><p className="eyebrow">REVIEW THE EVIDENCE</p><h1>Evidence Explorer<span className="title-period">.</span></h1></div><p>Compare excerpts, record observations, and track your review.</p></div>{loading && comparisonStartedAt !== null && <ComparisonProgress startedAt={comparisonStartedAt} onCancel={cancelComparison} />}<EvidenceExplorer analysis={project.analysis} sourceFiles={sourceFiles} state={explorerState} onStateChange={setExplorerState} onReviewChange={updateReview} onLocate={locateExcerpt} readOnly={busy} /></>}
+        </form> : project?.analysis && <><div className="explorer-intro"><div><p className="eyebrow">REVIEW THE EVIDENCE</p><h1>Evidence Explorer<span className="title-period">.</span></h1></div><p>Compare excerpts, record observations, and track your review.</p></div>{loading && comparisonStartedAt !== null && <ComparisonProgress startedAt={comparisonStartedAt} onCancel={cancelComparison} />}<EvidenceExplorer analysis={project.analysis} sourceFiles={sourceFiles} sources={sources} state={explorerState} onStateChange={setExplorerState} onReviewChange={updateReview} onLocate={locateExcerpt} readOnly={busy} /></>}
       </main>
 
-      <footer className="app-footer"><span className="version-label">SourceLens <span>V0.6</span></span><p>Projects and reviews stay in this browser. Sources are sent to AI when you compare.</p><a href="https://github.com/sx933229xiao-droid/sourcelens-evidence" target="_blank" rel="noreferrer">Project on GitHub <ArrowRight size={12} aria-hidden="true" /></a></footer>
+      <footer className="app-footer"><span className="version-label">SourceLens <span>V0.7</span></span><p>Projects and reviews stay in this browser. Sources are sent to AI when you compare.</p><a href="https://github.com/sx933229xiao-droid/sourcelens-evidence" target="_blank" rel="noreferrer">Project on GitHub <ArrowRight size={12} aria-hidden="true" /></a></footer>
       {confirmation && <ConfirmationDialog {...confirmation} onConfirm={() => resolveConfirmation(true)} onCancel={() => resolveConfirmation(false)} />}
       <span className="sr-only" role="status" aria-live="polite">{result && !loading ? `${result.findings.length} findings with matching source excerpts.` : ""}</span>
     </div>

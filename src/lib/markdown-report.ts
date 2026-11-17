@@ -1,5 +1,6 @@
 import { relationships, relationshipLabels } from "@/lib/comparison-schema";
 import { hasFindingReview, type ResearchProject } from "@/lib/project-store";
+import { findQuotePageMatches, quotePageSummary } from "@/lib/pdf-page-map";
 
 function plainText(value: string): string {
   return value.replace(/[\\`*_{}\[\]<>()#!|~]/g, "\\$&");
@@ -48,7 +49,8 @@ export function buildMarkdownReport(project: ResearchProject): string {
     }
     lines.push("**Original evidence**", "");
     finding.evidence.forEach(({ source, quote }) => {
-      lines.push(`Source ${source} — ${sourceName(source)}`, "", quoteBlock(quote), "");
+      const pageInfo = quotePageSummary(findQuotePageMatches(project.sources[source === "A" ? "sourceA" : "sourceB"], quote, project.sourceFiles[source]?.pdf?.pageMap));
+      lines.push(`Source ${source} — ${sourceName(source)}${pageInfo ? ` · ${pageInfo}` : ""}`, "", quoteBlock(quote), "");
     });
   });
   if (result.omittedFindings > 0) lines.push("", `${result.omittedFindings} finding(s) were omitted because their structure or source excerpts could not be verified.`);

@@ -7,7 +7,7 @@ import { openPdf, type PdfSession } from "@/lib/pdf-import";
 import type { ImportedSourceFile } from "@/lib/project-store";
 import { PdfImportDialog } from "./pdf-import-dialog";
 
-export type ExcerptLocation = { source: SourceId; quote: string };
+export type ExcerptLocation = { source: SourceId; quote: string; start?: number };
 const MAX_TEXT_FILE_BYTES = 50 * 1024 * 1024;
 
 type SourcePanelProps = {
@@ -33,7 +33,12 @@ export const SourcePanel = memo(function SourcePanel({ source, value, onChange, 
   const countId = `source-${source.toLowerCase()}-count`;
   const importErrorId = `source-${source.toLowerCase()}-import-error`;
   const quote = location?.quote;
-  const matchStart = useMemo(() => quote ? value.indexOf(quote) : -1, [value, quote]);
+  const requestedStart = location?.start;
+  const matchStart = useMemo(() => {
+    if (!quote) return -1;
+    if (requestedStart === undefined) return value.indexOf(quote);
+    return Number.isInteger(requestedStart) && requestedStart >= 0 && value.slice(requestedStart, requestedStart + quote.length) === quote ? requestedStart : -1;
+  }, [value, quote, requestedStart]);
 
   useEffect(() => () => { importController.current?.abort(); }, []);
   useEffect(() => { if (location) setMode("read"); }, [location]);

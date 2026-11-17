@@ -3,7 +3,8 @@
 import { useMemo } from "react";
 import { ArrowUpRight, Check, MessageSquare, Search, Star } from "lucide-react";
 import { relationships, relationshipLabels, type Relationship, type SourceId } from "@/lib/comparison-schema";
-import type { FindingReview, ResearchProject } from "@/lib/project-store";
+import type { FindingReview, ImportedSourceFile, ResearchProject } from "@/lib/project-store";
+import { findQuotePageMatches, pdfPageLabel, quotePageSummary } from "@/lib/pdf-page-map";
 
 export type ExplorerState = {
   query: string;
@@ -11,20 +12,22 @@ export type ExplorerState = {
   reviewStatus: "all" | "unreviewed" | "reviewed";
   importantOnly: boolean;
   selectedIndex: number | null;
+  occurrences: Record<string, number>;
 };
 
 export function initialExplorerState(): ExplorerState {
-  return { query: "", relationship: "all", reviewStatus: "all", importantOnly: false, selectedIndex: 0 };
+  return { query: "", relationship: "all", reviewStatus: "all", importantOnly: false, selectedIndex: 0, occurrences: {} };
 }
 
 type Analysis = NonNullable<ResearchProject["analysis"]>;
 type Props = {
   analysis: Analysis;
   sourceFiles: ResearchProject["sourceFiles"];
+  sources: ResearchProject["sources"];
   state: ExplorerState;
   onStateChange: (state: ExplorerState) => void;
   onReviewChange: (index: number, patch: Partial<FindingReview>) => void;
-  onLocate: (source: SourceId, quote: string) => void;
+  onLocate: (source: SourceId, quote: string, start?: number) => void;
   readOnly: boolean;
 };
 
@@ -40,7 +43,16 @@ function matchingFindings(analysis: Analysis, state: ExplorerState) {
   });
 }
 
-export function EvidenceExplorer({ analysis, sourceFiles, state, onStateChange, onReviewChange, onLocate, readOnly }: Props) {
+function EvidenceExcerpt({ source, quote, text, file, occurrence, onOccurrence, onLocate }: { source: SourceId; quote: string; text: string; file: ImportedSourceFile | null; occurrence: number; onOccurrence: (index: number) => void; onLocate: Props["onLocate"] }) {
+  const map = file?.pdf?.pageMap;
+  const matches = useMemo(() => findQuotePageMatches(text, quote, map), [text, quote, map]);
+  const index = Math.max(0, Math.min(occurrence, matches.length - 1));
+  const match = matches[index];
+  const summary = quotePageSummary(matches);
+  return <div className="explorer-excerpt"><blockquote>{quote}</blockquote>{file?.pdf && <p className={`quote-pages${match ? "" : " unavailable"}`} title={!map && file.edited ? "The source was edited after import." : undefined}>{summary ?? "PDF page information unavailable"}</p>}{matches.length > 1 && <div className="occurrence-controls" role="group" aria-label="Quote occurrences"><button type="button" disabled={index === 0} onClick={() => onOccurrence(index - 1)} aria-label="Previous match">Previous</button><label>Match <input type="number" aria-label="Quote match" min={1} max={matches.length} value={index + 1} onChange={(event) => { const next = Number(event.target.value) - 1; if (Number.isInteger(next) && next >= 0 && next < matches.length) onOccurrence(next); }} /> of {matches.length}</label><button type="button" disabled={index === matches.length - 1} onClick={() => onOccurrence(index + 1)} aria-label="Next match">Next</button><span>{match && pdfPageLabel(match)}</span></div>}<button type="button" className="locate-button" onClick={() => onLocate(source, quote, match?.start)}>View in source <ArrowUpRight size={12} aria-hidden="true" /></button></div>;
+}
+
+export function EvidenceExplorer({ analysis, sourceFiles, sources, state, onStateChange, onReviewChange, onLocate, readOnly }: Props) {
   const { findings, omittedFindings } = analysis.result;
   const visible = useMemo(() => matchingFindings(analysis, state), [analysis, state.query, state.relationship, state.reviewStatus, state.importantOnly]);
   const selectedIndex = state.selectedIndex;
@@ -58,7 +70,7 @@ export function EvidenceExplorer({ analysis, sourceFiles, state, onStateChange, 
   }
 
   function clearFilters() {
-    changeFilters({ ...initialExplorerState(), selectedIndex: state.selectedIndex });
+    changeFilters({ ...initialExplorerState(), selectedIndex: state.selectedIndex, occurrences: state.occurrences });
   }
 
   return (
@@ -89,8 +101,8 @@ export function EvidenceExplorer({ analysis, sourceFiles, state, onStateChange, 
             const file = sourceFiles[source];
             const excerpts = selected.evidence.filter((evidence) => evidence.source === source);
             return <section className={`evidence-column evidence-${source.toLowerCase()}`} key={source} aria-label={`Source ${source} evidence`}>
-              <header><span className="source-letter">{source}</span><div><h3>Source {source}</h3><p className="evidence-file" title={file?.name}>{file?.name ?? "Pasted text"}</p>{file?.pdf && <p className="evidence-file">PDF pages {file.pdf.fromPage}–{file.pdf.toPage} of {file.pdf.pageCount}</p>}</div></header>
-              {excerpts.length ? excerpts.map(({ quote }, index) => <div className="explorer-excerpt" key={index}><blockquote>{quote}</blockquote><button type="button" className="locate-button" onClick={() => onLocate(source, quote)}>View in source <ArrowUpRight size={12} aria-hidden="true" /></button></div>) : <p className="evidence-not-cited">Not cited in this finding.</p>}
+              <header><span className="source-letter">{source}</span><div><h3>Source {source}</h3><p className="evidence-file" title={file?.name}>{file?.name ?? "Pasted text"}</p>{file?.pdf && <p className="evidence-file">Imported PDF pages {file.pdf.fromPage}–{file.pdf.toPage} of {file.pdf.pageCount}</p>}</div></header>
+              {excerpts.length ? excerpts.map(({ quote }, index) => { const key = `${selectedIndex}:${source}:${index}`; return <EvidenceExcerpt key={key} source={source} quote={quote} text={sources[source === "A" ? "sourceA" : "sourceB"]} file={file} occurrence={state.occurrences[key] ?? 0} onOccurrence={(value) => onStateChange({ ...state, occurrences: { ...state.occurrences, [key]: value } })} onLocate={onLocate} />; }) : <p className="evidence-not-cited">Not cited in this finding.</p>}
             </section>;
           })}</div>
           <fieldset className="finding-review" disabled={readOnly}><legend>Your review</legend><div className="review-actions"><button type="button" className={`review-toggle${review?.reviewed ? " is-active" : ""}`} aria-pressed={Boolean(review?.reviewed)} onClick={() => onReviewChange(selectedIndex, { reviewed: !review?.reviewed })}><Check size={14} aria-hidden="true" />{review?.reviewed ? "Reviewed" : "Mark reviewed"}</button><button type="button" className={`review-toggle review-important${review?.important ? " is-active" : ""}`} aria-pressed={Boolean(review?.important)} onClick={() => onReviewChange(selectedIndex, { important: !review?.important })}><Star size={14} fill={review?.important ? "currentColor" : "none"} aria-hidden="true" />{review?.important ? "Important" : "Mark important"}</button></div><label className="review-notes-label" htmlFor="research-notes">Research notes</label><textarea id="research-notes" rows={5} value={review?.note ?? ""} onChange={(event) => onReviewChange(selectedIndex, { note: event.target.value })} placeholder="Add your observations or questions…" /><p className="review-help">Your review is saved with this analysis. Marking a finding reviewed does not verify the claim.</p></fieldset>
