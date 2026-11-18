@@ -200,16 +200,15 @@ function FindingDetail({ selected, index, previous, next, total, review, evidenc
   onReview: Props["onReviewChange"];
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const oldIndex = useRef(index);
   const reduced = useReducedMotion();
-  const direction = reduced || oldIndex.current === index ? 0 : (index ?? 0) > (oldIndex.current ?? 0) ? 1 : -1;
   useLayoutEffect(() => {
     const body = scrollRef.current;
     if (!body) return;
-    body.scrollTop = memory.detailIndex === index ? memory.detailTop : 0;
+    // A new finding starts at the top; returning to the same finding restores its position.
+    const top = memory.detailIndex === index ? memory.detailTop : 0;
+    if (body.scrollTop !== top) body.scrollTop = top;
     memory.detailTop = body.scrollTop;
     memory.detailIndex = index;
-    oldIndex.current = index;
   }, [index, memory]);
 
   return <article className="studio-finding-detail" aria-label="Selected finding">
@@ -223,14 +222,14 @@ function FindingDetail({ selected, index, previous, next, total, review, evidenc
       <button ref={inspectorToggle} type="button" className="studio-icon finding-inspector-trigger" title={inspectorOpen ? "Hide Source Inspector" : "Show Source Inspector"} aria-label={inspectorOpen ? "Hide Source Inspector from detail" : "Show Source Inspector"} aria-expanded={inspectorOpen} onClick={onToggleInspector}>{inspectorOpen ? <PanelRightClose size={18} aria-hidden="true" /> : <PanelRightOpen size={18} aria-hidden="true" />}</button>
     </header>
     <div className="finding-scroll" ref={scrollRef} onScroll={(event) => { memory.detailTop = event.currentTarget.scrollTop; }}>
-      {selected && index !== null ? <div key={index} className="finding-content">
-        <motion.header className="finding-text" initial={direction ? { y: 7 * direction, opacity: .88 } : false} animate={{ y: 0, opacity: 1 }} transition={{ duration: .16, ease: [.2, .78, .22, 1] }}>
+      {selected && index !== null ? <div className="finding-content">
+        <header className="finding-text">
           <RelationshipBadge relationship={selected.relationship} />
           {outsideFilters && <span className="finding-outside">Outside current filters</span>}
           <h1 data-han={containsHan(selected.topic) ? "" : undefined}>{selected.topic}</h1>
           <p data-han={containsHan(selected.explanation) ? "" : undefined}>{selected.explanation}</p>
-        </motion.header>
-        <motion.div className="studio-evidence-grid" initial={direction ? { y: 14 * direction, opacity: .72 } : false} animate={{ y: 0, opacity: 1 }} transition={{ duration: .22, ease: [.2, .78, .22, 1] }}>
+        </header>
+        <div className="studio-evidence-grid">
           {(["A", "B"] as const).map((source) => {
             const items = evidence.filter((item) => item.source === source);
             if (!items.length) return <div key={source} className={`studio-quote-card quote-${source.toLowerCase()} quote-empty`}><h3>Source {source}</h3><p>Not cited in this finding.</p></div>;
@@ -259,7 +258,7 @@ function FindingDetail({ selected, index, previous, next, total, review, evidenc
               })}
             </section>;
           })}
-        </motion.div>
+        </div>
         <fieldset className="studio-review" disabled={readOnly}>
           <legend className="sr-only">Your review</legend>
           <div className="studio-review-actions">
