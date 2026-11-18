@@ -1,8 +1,8 @@
 "use client";
 
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, FileText, LocateFixed, PanelRightClose } from "lucide-react";
-import { motion } from "motion/react";
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { LayoutGroup, motion, useReducedMotion } from "motion/react";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SourceId } from "@/lib/comparison-schema";
 import { pdfPageLabel } from "@/lib/pdf-page-map";
 import type { ImportedSourceFile } from "@/lib/project-store";
@@ -54,6 +54,10 @@ export const SourceInspector = memo(function SourceInspector({
     setReading((previous) => previous.source === source && previous.page === page ? previous : { source, page });
   }, [source]);
   const controls = useRef<ReaderControls>(null);
+  const previousSource = useRef(source);
+  const reduced = useReducedMotion();
+  const incoming = !reduced && previousSource.current !== source;
+  useLayoutEffect(() => { previousSource.current = source; }, [source]);
   const pageMap = file?.pdf?.pageMap;
   const pages = useMemo(() => pageMap?.pages.filter((span) => span.end > span.start).map((span) => span.page) ?? [], [pageMap]);
   const pageIndex = Math.max(0, visiblePage === null ? 0 : pages.indexOf(visiblePage));
@@ -63,9 +67,14 @@ export const SourceInspector = memo(function SourceInspector({
   return <aside className="inspector-pane" aria-label="Original source" data-active-source={source}>
     <header className="inspector-toolbar">
       <h2>Source Inspector</h2>
-      <div className="inspector-switch" role="group" aria-label="Source to inspect">
-        {(["A", "B"] as const).map((id) => <button key={id} className="studio-toggle" type="button" aria-label={`Inspect Source ${id}`} aria-pressed={source === id} onClick={() => onSource(id)}>{id}</button>)}
-      </div>
+      <LayoutGroup id="inspector-source">
+        <div className="inspector-switch" role="group" aria-label="Source to inspect">
+          {(["A", "B"] as const).map((id) => <button key={id} className="studio-toggle" type="button" aria-label={`Inspect Source ${id}`} aria-pressed={source === id} onClick={() => onSource(id)}>
+            {source === id && <motion.span className="inspector-source-mark" layout="position" layoutId="active" aria-hidden="true" transition={{ type: "spring", stiffness: 530, damping: 40 }} />}
+            <span className="inspector-source-label">{id}</span>
+          </button>)}
+        </div>
+      </LayoutGroup>
       {onClose && <button type="button" className="studio-icon" aria-label="Hide Source Inspector" title="Hide Source Inspector" onClick={onClose}><PanelRightClose size={17} aria-hidden="true" /></button>}
     </header>
     <div className="inspector-source-header">
@@ -82,7 +91,10 @@ export const SourceInspector = memo(function SourceInspector({
         <button className="studio-icon" type="button" aria-label="Next PDF page" disabled={pageIndex + 1 >= pages.length} onClick={() => controls.current?.goToPage(pages[pageIndex + 1])}><ChevronRight size={16} aria-hidden="true" /></button>
       </div>}
     </div>
-    <motion.div key={source} className="inspector-reading" initial={{ x: source === "A" ? -10 : 10, opacity: .86 }} animate={{ x: 0, opacity: 1 }} transition={{ duration: .16, ease: [.2, .78, .22, 1] }}>
+    <motion.div key={source} className="inspector-reading"
+      initial={incoming ? { x: source === "A" ? -17 : 17, clipPath: source === "A" ? "inset(0 5% 0 0)" : "inset(0 0 0 5%)", opacity: .86 } : false}
+      animate={{ x: 0, clipPath: "inset(0 0% 0 0%)", opacity: 1, transitionEnd: { clipPath: "none" } }}
+      transition={{ duration: .2, ease: [.2, .78, .22, 1] }}>
       <SourceReader source={source} value={text} pageMap={pageMap} match={match} revision={revision} memory={memory} onPageChange={setVisiblePage} controls={controls} inspector />
     </motion.div>
     <footer className="inspector-footer">

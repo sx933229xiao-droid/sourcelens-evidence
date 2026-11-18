@@ -10,7 +10,7 @@
 
 ## 产品与当前基线
 
-- 已实现 V0.8 Research Studio：固定应用框架、可调整的 Findings / Detail / Source Inspector 三栏、窄屏抽屉和动效。保留 V0.7 的 AI、PDF、自动保存、标注、Markdown 和 JSON 备份行为。实际验证范围见 README。
+- 当前 V0.8.1 Research Studio。固定应用框架、可调整三栏与窄屏抽屉沿用 V0.8，优化 Finding 选中、引文激活、原文切换和中英混排。业务与依赖基线沿用 V0.8。实际验证范围见 README。
 - 产品比较资料中的陈述关系，不裁定客观真伪。信息缺失不等于冲突，不同年份或适用条件应区分。
 - 使用 Next.js App Router、React、TypeScript、Tailwind CSS、自定义 CSS 和 Zod；原生 IndexedDB 仅在浏览器保存项目，无云数据库、账户、多 Agent 或任务队列。
 - 每项目保留两份当前文本、文件名及 Edited 标记、最新成功结果和分析时间。恢复时原样保留 Findings 与 omittedFindings，不重复分析或重新计算遗漏数。资料实际变更时清空分析及标注；不保存原文件、历史版本或原始模型响应。
@@ -31,7 +31,7 @@
 - 服务端模型调用超时 240 秒，前端兜底 255 秒；取消贯穿客户端、服务端和供应商请求，并防止迟到响应覆盖。分析期间冻结编辑、导入、标注和项目变更，允许阅读原文及旧结果、切换模式。失败或取消保留旧分析；原文变更仍清空分析。请求状态仅保存在内存中。
 - 每条发现独立校验结构及逐字引用：过滤无效项、保留有效项；响应不可解析、全部发现不可用或 finish_reason 为 length 时才报错，不把达到输出上限的响应保存为成功分析。
 - 保持五类关系：Agreement、Potential Conflict、Context Difference、Single-Source Claim、Needs Review。当前真实示例已验证 Agreement、Potential Conflict 和 Single-Source Claim；另外两类尚未单独实测，也不代表全部场景准确率验证。
-- 暖白纸面、深蓝选中、衬线阅读正文以首稿为视觉基准。使用 react-resizable-panels 负责即时尺寸响应，Motion 负责选中、内容和抽屉过渡，拖拽时不插值宽度，并支持系统减少动效。TXT/Markdown 导入不上传文件，点击 Compare Sources 后才发送编辑区文本，不发送人工标注。
+- 暖白纸面、深蓝选中、衬线阅读正文以首稿为视觉基准。Finding 行独立绘制选中底色，Motion 只移动固定尺寸的选中标记。中文标题与引文随栏宽调整，中文引文用正体。拖拽即时调整，系统减少动效仍保留清晰反馈。TXT/Markdown 导入不上传文件，点击 Compare Sources 后才发送编辑区文本，不发送人工标注。
 - 云部署尚未完成，Google Cloud Run 仅在评估。不要把 README 的计划、示例或优化建议写成已完成的能力。
 
 ## 关键代码定位

@@ -8,6 +8,10 @@ export type ReaderMatch = Pick<QuotePageMatch, "start" | "end"> & { pages?: Pick
 export type ReaderMemory = Partial<Record<SourceId, { top: number; max: number; width: number; revision: number }>>;
 export type ReaderControls = { goToPage: (page: number) => void };
 
+export function containsHan(text: string) {
+  return /[\u3400-\u9fff\uf900-\ufaff\u{20000}-\u{323af}]/u.test(text);
+}
+
 export function findReaderMatches(text: string, quote: string, pageMap?: PdfPageMap): ReaderMatch[] {
   if (!quote) return [];
   if (pageMap) {
@@ -53,6 +57,7 @@ export const SourceReader = memo(function SourceReader({ source, value, pageMap,
   const start = match?.start;
   const end = match?.end;
   const quotePage = match?.pages?.fromPage;
+  const hasHan = useMemo(() => containsHan(value), [value]);
   const blocks = useMemo(() => textBlocks(value, pageMap), [value, pageMap]);
   const contents = useMemo(() => blocks.map((block) => {
     const from = start === undefined ? 0 : Math.max(0, start - block.start);
@@ -130,17 +135,22 @@ export const SourceReader = memo(function SourceReader({ source, value, pageMap,
         const top = node.clientWidth === saved.width || saved.max === 0 ? saved.top : saved.top / saved.max * max;
         node.scrollTo({ top, behavior: "instant" });
       } else if (mark) {
+        // Cancel any earlier smooth scroll before deciding whether the new target needs one.
+        if (applied.current !== null) node.scrollTo({ top: node.scrollTop, behavior: "instant" });
         const view = node.getBoundingClientRect();
         const rect = mark.getBoundingClientRect();
-        const page = quotePage === undefined ? undefined : pageElements.current.find((item) => item.page === quotePage);
-        const pageTop = page?.node.getBoundingClientRect().top;
-        const nearPageStart = pageTop !== undefined && rect.top >= pageTop && rect.top - pageTop < node.clientHeight * .52;
-        // Keep the page's opening lines intact when they fit above the citation.
-        const anchor = nearPageStart ? pageTop - 22 : rect.top - node.clientHeight * .34;
-        const top = Math.max(0, Math.min(max, node.scrollTop + anchor - view.top));
-        const near = applied.current !== null && Math.abs(top - node.scrollTop) < node.clientHeight;
-        const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        node.scrollTo({ top, behavior: near && !reduce ? "smooth" : "instant" });
+        const alreadyReadable = applied.current !== null && rect.top >= view.top + 20 && rect.bottom <= view.bottom - 20;
+        if (!alreadyReadable) {
+          const page = quotePage === undefined ? undefined : pageElements.current.find((item) => item.page === quotePage);
+          const pageTop = page?.node.getBoundingClientRect().top;
+          const nearPageStart = pageTop !== undefined && rect.top >= pageTop && rect.top - pageTop < node.clientHeight * .52;
+          // Keep the page's opening lines intact when they fit above the citation.
+          const anchor = nearPageStart ? pageTop - 22 : rect.top - node.clientHeight * .34;
+          const top = Math.max(0, Math.min(max, node.scrollTop + anchor - view.top));
+          const near = applied.current !== null && Math.abs(top - node.scrollTop) < node.clientHeight;
+          const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          node.scrollTo({ top, behavior: near && !reduce ? "smooth" : "instant" });
+        }
       }
       applied.current = revision;
       reportPosition();
@@ -172,7 +182,7 @@ export const SourceReader = memo(function SourceReader({ source, value, pageMap,
 
   return (
     <div ref={pane} className={inspector ? "source-reader inspector-reader" : "source-reader"} role="region" aria-label={`Source ${source} reading view`} tabIndex={0} onScroll={reportAfterScroll}>
-      <div className="source-prose">{value ? contents : <p className="studio-empty">This source has no text.</p>}</div>
+      <div className="source-prose" data-han={hasHan ? "" : undefined}>{value ? contents : <p className="studio-empty">This source has no text.</p>}</div>
     </div>
   );
 });

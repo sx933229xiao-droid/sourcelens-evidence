@@ -4,7 +4,7 @@ import {
   ArrowUpRight, Bookmark, Check, ChevronLeft, ChevronRight, List, MessageSquare, PanelRightClose, PanelRightOpen,
   Search, SlidersHorizontal, TriangleAlert,
 } from "lucide-react";
-import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { type Dispatch, type RefObject, type SetStateAction, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { GroupImperativeHandle } from "react-resizable-panels";
 import { relationships, relationshipLabels, type Finding, type Relationship, type SourceId } from "@/lib/comparison-schema";
@@ -12,7 +12,7 @@ import { pdfPageLabel } from "@/lib/pdf-page-map";
 import type { FindingReview, ResearchProject } from "@/lib/project-store";
 import { ExplorerDrawer, ExplorerPanels, loadExplorerPreferences, useExplorerViewport, writeExplorerPreferences, type ExplorerPreferences } from "./explorer-panels";
 import { SourceInspector } from "./source-inspector";
-import { findReaderMatches, type ReaderMatch, type ReaderMemory } from "./source-reader";
+import { containsHan, findReaderMatches, type ReaderMatch, type ReaderMemory } from "./source-reader";
 
 export type ExplorerState = {
   query: string;
@@ -160,10 +160,10 @@ function FindingsNavigation({ analysis, visible, state, memory, searchRef, onFil
           const selected = index === selectedIndex;
           return <motion.li key={index} layout="position" layoutDependency={arrangement} transition={{ layout: { duration: .17, ease: [.2, .78, .22, 1] } }}>
             <button type="button" className="studio-finding-row" aria-current={selected ? "true" : undefined} aria-label={`Finding ${index + 1}: ${finding.topic}`} onClick={() => onSelect(index)}>
-              {selected && <motion.span layoutId="active" className="studio-finding-mark" aria-hidden="true" transition={{ type: "spring", stiffness: 460, damping: 39 }} />}
+              {selected && <motion.span layout="position" layoutId="active" className="studio-finding-mark" aria-hidden="true" transition={{ type: "spring", stiffness: 510, damping: 41 }} />}
               <span className="studio-row-index">{String(index + 1).padStart(2, "0")}</span>
               <span className="studio-row-body">
-                <span className="studio-row-title">{finding.topic}</span>
+                <span className="studio-row-title" data-han={containsHan(finding.topic) ? "" : undefined}>{finding.topic}</span>
                 <span className="studio-row-status"><RelationshipBadge relationship={finding.relationship} />{review?.reviewed && <Check size={13} aria-label="Reviewed" />}{review?.important && <Bookmark size={13} fill="currentColor" aria-label="Important" />}{review?.note.trim() && <MessageSquare size={12} aria-label="Has research notes" />}</span>
                 <span className="studio-row-summary">{finding.explanation}</span>
               </span>
@@ -201,7 +201,8 @@ function FindingDetail({ selected, index, previous, next, total, review, evidenc
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const oldIndex = useRef(index);
-  const direction = oldIndex.current === index ? 0 : (index ?? 0) > (oldIndex.current ?? 0) ? 1 : -1;
+  const reduced = useReducedMotion();
+  const direction = reduced || oldIndex.current === index ? 0 : (index ?? 0) > (oldIndex.current ?? 0) ? 1 : -1;
   useLayoutEffect(() => {
     const body = scrollRef.current;
     if (!body) return;
@@ -222,14 +223,14 @@ function FindingDetail({ selected, index, previous, next, total, review, evidenc
       <button ref={inspectorToggle} type="button" className="studio-icon finding-inspector-trigger" title={inspectorOpen ? "Hide Source Inspector" : "Show Source Inspector"} aria-label={inspectorOpen ? "Hide Source Inspector from detail" : "Show Source Inspector"} aria-expanded={inspectorOpen} onClick={onToggleInspector}>{inspectorOpen ? <PanelRightClose size={18} aria-hidden="true" /> : <PanelRightOpen size={18} aria-hidden="true" />}</button>
     </header>
     <div className="finding-scroll" ref={scrollRef} onScroll={(event) => { memory.detailTop = event.currentTarget.scrollTop; }}>
-      {selected && index !== null ? <motion.div key={index} className="finding-content" initial={direction ? { y: 9 * direction, opacity: .86 } : false} animate={{ y: 0, opacity: 1 }} transition={{ duration: .16, ease: [.2, .78, .22, 1] }}>
-        <header className="finding-text">
+      {selected && index !== null ? <div key={index} className="finding-content">
+        <motion.header className="finding-text" initial={direction ? { y: 7 * direction, opacity: .88 } : false} animate={{ y: 0, opacity: 1 }} transition={{ duration: .16, ease: [.2, .78, .22, 1] }}>
           <RelationshipBadge relationship={selected.relationship} />
           {outsideFilters && <span className="finding-outside">Outside current filters</span>}
-          <h1>{selected.topic}</h1>
-          <p>{selected.explanation}</p>
-        </header>
-        <div className="studio-evidence-grid">
+          <h1 data-han={containsHan(selected.topic) ? "" : undefined}>{selected.topic}</h1>
+          <p data-han={containsHan(selected.explanation) ? "" : undefined}>{selected.explanation}</p>
+        </motion.header>
+        <motion.div className="studio-evidence-grid" initial={direction ? { y: 14 * direction, opacity: .72 } : false} animate={{ y: 0, opacity: 1 }} transition={{ duration: .22, ease: [.2, .78, .22, 1] }}>
           {(["A", "B"] as const).map((source) => {
             const items = evidence.filter((item) => item.source === source);
             if (!items.length) return <div key={source} className={`studio-quote-card quote-${source.toLowerCase()} quote-empty`}><h3>Source {source}</h3><p>Not cited in this finding.</p></div>;
@@ -241,15 +242,24 @@ function FindingDetail({ selected, index, previous, next, total, review, evidenc
                 const pageText = page ? pdfPageLabel(page).replace("PDF ", "") : sourceFiles[source]?.pdf ? "Page unavailable" : "";
                 const isActive = inspectorOpen && active?.index === item.index;
                 return <div key={item.index} className={`studio-quote-card quote-${source.toLowerCase()}${isActive ? " quote-active" : ""}`}>
-                  <button type="button" className="quote-command" aria-label={`Open Source ${source} citation ${items.indexOf(item) + 1}`} onClick={() => onCitation(item)} disabled={!match}>
-                    <span>Source {source}</span>{pageText && <span className="quote-page-label">{pageText}</span>}<ArrowUpRight size={15} aria-hidden="true" />
-                  </button>
-                  <blockquote onClick={() => { if (match && window.getSelection()?.isCollapsed !== false) onCitation(item); }}>{item.quote}</blockquote>
+                  <motion.span className="quote-accent" aria-hidden="true" initial={false}
+                    animate={{ clipPath: isActive ? "inset(0% 0 0% 0)" : "inset(45% 0 45% 0)", opacity: isActive ? 1 : 0 }}
+                    transition={{ duration: reduced ? 0 : .17, ease: [.2, .78, .22, 1] }} />
+                  <motion.button type="button" className="quote-command" aria-label={`Open Source ${source} citation ${items.indexOf(item) + 1}`}
+                    aria-current={isActive ? "true" : undefined} onClick={() => onCitation(item)} disabled={!match}
+                    whileTap={match && !reduced ? { x: 2 } : undefined} transition={{ duration: .12 }}>
+                    <span>Source {source}</span>{pageText && <span className="quote-page-label">{pageText}</span>}
+                    <motion.span className="quote-link-icon" aria-hidden="true" initial={false}
+                      animate={{ x: isActive && !reduced ? 2 : 0, y: isActive && !reduced ? -2 : 0 }} transition={{ duration: .16 }}>
+                      <ArrowUpRight size={15} />
+                    </motion.span>
+                  </motion.button>
+                  <blockquote data-han={containsHan(item.quote) ? "" : undefined} onClick={() => { if (match && window.getSelection()?.isCollapsed !== false) onCitation(item); }}>{item.quote}</blockquote>
                 </div>;
               })}
             </section>;
           })}
-        </div>
+        </motion.div>
         <fieldset className="studio-review" disabled={readOnly}>
           <legend className="sr-only">Your review</legend>
           <div className="studio-review-actions">
@@ -262,7 +272,7 @@ function FindingDetail({ selected, index, previous, next, total, review, evidenc
             <div>{(review?.note.length ?? 0).toLocaleString("en-US")} characters</div>
           </div>
         </fieldset>
-      </motion.div> : <div className="finding-empty"><Search size={24} strokeWidth={1.5} aria-hidden="true" /><h1>No matching findings</h1><p>Try a different search or clear the filters.</p></div>}
+      </div> : <div className="finding-empty"><Search size={24} strokeWidth={1.5} aria-hidden="true" /><h1>No matching findings</h1><p>Try a different search or clear the filters.</p></div>}
     </div>
   </article>;
 }

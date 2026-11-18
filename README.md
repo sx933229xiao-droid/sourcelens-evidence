@@ -24,7 +24,7 @@ AI compares the meaning of differently worded claims and explains differences in
 
 ## Development Status
 
-**V0.8 Research Studio runs locally with three resizable review panes and in-place source inspection.**
+**V0.8.1 Research Studio runs locally with refined evidence transitions and improved Chinese and mixed-script typography.**
 
 The production build passes. Workspace and Evidence Explorer share a fixed application bar and navigation. Evidence Explorer keeps findings, excerpts, and the original text within the same workspace. Build verification used saved analyses, text PDFs, and local responses for the comparison feedback.
 
@@ -64,6 +64,12 @@ The production build passes. Workspace and Evidence Explorer share a fixed appli
 - Independent validation of findings. Invalid findings are omitted while valid findings remain visible; unreadable responses or responses with no usable findings return an error.
 - Desktop and narrow-screen layouts, loading feedback, file-size protection, and errors that preserve source text and any previous successful analysis.
 - Desktop Explorer keeps the Findings list, review detail, and Inspector side by side. On phones, the detail screen opens Findings and Inspector as drawers, and Workspace switches between the two source editors.
+
+### V0.8.1 verification — November 18, 2026
+
+- Production build and TypeScript passed. Recorded Chromium moving between Findings of different heights. The selected row keeps its own background and a fixed-size blue marker moves with the selection. Frame measurements confirmed translation with no scaling.
+- Checked directional Finding and source changes, citation activation, rapid consecutive selection, and reduced motion. For a quote already in view, Inspector keeps the current scroll position and emphasizes the exact text.
+- Reviewed the repository's Chinese and English documents at desktop, narrow desktop, and phone widths. Verified font fallback and upright Chinese quotations in Chromium. A real PDF confirmed the 39th match on page 11, cross-page highlighting on pages 2–3, and scroll retention during note saving.
 
 ### V0.8 verification — November 18, 2026
 
