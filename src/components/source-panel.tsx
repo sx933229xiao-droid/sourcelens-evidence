@@ -1,13 +1,13 @@
 "use client";
 
-import { type ChangeEvent, type RefObject, memo, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type RefObject, memo, useEffect, useRef, useState } from "react";
 import { Upload } from "lucide-react";
 import { type SourceId } from "@/lib/comparison-schema";
 import { openPdf, type PdfSession } from "@/lib/pdf-import";
 import type { ImportedSourceFile } from "@/lib/project-store";
 import { PdfImportDialog } from "./pdf-import-dialog";
+import { SourceReader } from "./source-reader";
 
-export type ExcerptLocation = { source: SourceId; quote: string; start?: number };
 const MAX_TEXT_FILE_BYTES = 50 * 1024 * 1024;
 
 type SourcePanelProps = {
@@ -19,36 +19,20 @@ type SourcePanelProps = {
   importedFile: ImportedSourceFile | null;
   readOnly: boolean;
   inputRef: RefObject<HTMLTextAreaElement | null>;
-  location: ExcerptLocation | null;
 };
 
-export const SourcePanel = memo(function SourcePanel({ source, value, onChange, onImport, onImportingChange, importedFile, readOnly, inputRef, location }: SourcePanelProps) {
+export const SourcePanel = memo(function SourcePanel({ source, value, onChange, onImport, onImportingChange, importedFile, readOnly, inputRef }: SourcePanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importController = useRef<AbortController | null>(null);
-  const highlightRef = useRef<HTMLElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [openingPdf, setOpeningPdf] = useState(false);
   const [pdfDraft, setPdfDraft] = useState<{ fileName: string; session: PdfSession } | null>(null);
   const [mode, setMode] = useState<"read" | "edit">(importedFile?.pdf ? "read" : "edit");
   const countId = `source-${source.toLowerCase()}-count`;
   const importErrorId = `source-${source.toLowerCase()}-import-error`;
-  const quote = location?.quote;
-  const requestedStart = location?.start;
-  const matchStart = useMemo(() => {
-    if (!quote) return -1;
-    if (requestedStart === undefined) return value.indexOf(quote);
-    return Number.isInteger(requestedStart) && requestedStart >= 0 && value.slice(requestedStart, requestedStart + quote.length) === quote ? requestedStart : -1;
-  }, [value, quote, requestedStart]);
 
   useEffect(() => () => { importController.current?.abort(); }, []);
-  useEffect(() => { if (location) setMode("read"); }, [location]);
   useEffect(() => { if (!value) setMode("edit"); }, [value]);
-  useEffect(() => {
-    if (mode === "read" && location && highlightRef.current) {
-      highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-      highlightRef.current.focus({ preventScroll: true });
-    }
-  }, [mode, location]);
 
   function cancelPdfImport() {
     const controller = importController.current;
@@ -144,7 +128,7 @@ export const SourcePanel = memo(function SourcePanel({ source, value, onChange, 
       {pdfDraft && <PdfImportDialog fileName={pdfDraft.fileName} session={pdfDraft.session} onConfirm={confirmPdfImport} onCancel={cancelPdfImport} />}
       <div className="source-view-tools" role="group" aria-label={`Source ${source} view`}><button type="button" aria-pressed={mode === "read"} disabled={!value} onClick={() => setMode("read")}>Read</button><button type="button" aria-pressed={mode === "edit"} disabled={readOnly} onClick={() => setMode("edit")}>Edit</button><span>{mode === "read" ? "Reading view" : readOnly ? "Editing paused" : "Editable text"}</span></div>
 
-      {mode === "read" ? <div className="source-reader" role="region" aria-label={`Source ${source} reading view`} tabIndex={0}>{matchStart >= 0 && location ? <>{value.slice(0, matchStart)}<mark ref={highlightRef} tabIndex={-1}>{location.quote}</mark>{value.slice(matchStart + location.quote.length)}</> : value}</div> : <textarea
+      {mode === "read" ? <SourceReader source={source} value={value} /> : <textarea
         ref={inputRef}
         id={`source-${source}-input`}
         aria-label={`Source ${source}`}
