@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { relationships, type SourceId } from "@/lib/comparison-schema";
+import { relationships, type Finding, type SourceId } from "@/lib/comparison-schema";
 import { isPdfPageMapValid, pdfPageMapSchema } from "@/lib/pdf-page-map";
 
 const sourceFileSchema = z.object({
@@ -19,6 +19,9 @@ const findingReviewSchema = z.object({
   reviewed: z.boolean(),
   important: z.boolean(),
   note: z.string(),
+  relationshipOverride: z.enum(relationships).optional(),
+  explanationOverride: z.string().refine((value) => value.trim().length > 0).optional(),
+  excluded: z.boolean().optional(),
 });
 
 export type FindingReview = z.infer<typeof findingReviewSchema>;
@@ -77,8 +80,21 @@ export function markSourceEdited(file: ImportedSourceFile | null): ImportedSourc
   return { ...file, edited: true, pdf };
 }
 
+export function hasFindingCorrection(review: FindingReview | undefined): boolean {
+  return Boolean(review?.relationshipOverride || review?.explanationOverride);
+}
+
+export function effectiveFinding(finding: Finding, review: FindingReview | undefined): Finding {
+  if (!hasFindingCorrection(review)) return finding;
+  return {
+    ...finding,
+    relationship: review?.relationshipOverride ?? finding.relationship,
+    explanation: review?.explanationOverride ?? finding.explanation,
+  };
+}
+
 export function hasFindingReview(review: FindingReview | undefined): review is FindingReview {
-  return Boolean(review && (review.reviewed || review.important || review.note.trim()));
+  return Boolean(review && (review.reviewed || review.important || review.note.trim() || review.excluded || hasFindingCorrection(review)));
 }
 
 export function hasAnnotations(analysis: ResearchProject["analysis"]): boolean {

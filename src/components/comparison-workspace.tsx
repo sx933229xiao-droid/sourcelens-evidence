@@ -18,6 +18,8 @@ type Connection = "checking" | "configured" | "connected" | "missing" | "unavail
 type ActiveComparison = { controller: AbortController; projectId: string; timeoutId: number | null };
 type PendingConfirmation = Confirmation & { resolve: (accepted: boolean) => void };
 
+const reviewContent = "review marks, research notes, corrections, and exclusions";
+
 function downloadFile(content: string, name: string, type: string) {
   const url = URL.createObjectURL(new Blob([content], { type }));
   const link = document.createElement("a");
@@ -28,7 +30,7 @@ function downloadFile(content: string, name: string, type: string) {
 }
 
 function pageRecoveryNotice(sources: SourceId[]): string {
-  return sources.length ? ` PDF page information is unavailable for ${sources.map((source) => `Source ${source}`).join(" and ")}; the sources, findings, and review notes were kept.` : "";
+  return sources.length ? ` PDF page information is unavailable for ${sources.map((source) => `Source ${source}`).join(" and ")}. The sources, findings, and reviews were kept.` : "";
 }
 
 const connectionLabels: Record<Connection, string> = {
@@ -110,9 +112,9 @@ export function ComparisonWorkspace() {
     pending?.resolve(accepted);
   }
 
-  function resetExplorer() {
+  function resetExplorer(analysis?: ResearchProject["analysis"]) {
     explorerMemory.current = createExplorerMemory();
-    setExplorerState(initialExplorerState());
+    setExplorerState(initialExplorerState(analysis));
     setSearchRequest(0);
   }
 
@@ -128,7 +130,7 @@ export function ComparisonWorkspace() {
     setComparisonNotice(null);
     setMode(next.analysis ? "explorer" : "workspace");
     setMobileSource("A");
-    resetExplorer();
+    resetExplorer(next.analysis);
   }
 
   useEffect(() => {
@@ -263,7 +265,7 @@ export function ComparisonWorkspace() {
     if (file === undefined && current.sources[source === "A" ? "sourceA" : "sourceB"] === value) return true;
     if (hasAnnotations(current.analysis) && !await confirmAction({
       title: file ? `Replace Source ${source}?` : `Edit Source ${source}?`,
-      message: file ? "Importing this text will clear the current analysis, review marks, and research notes. Cancel to keep them, or export a report before replacing the source." : "Changing the source will clear the current analysis, review marks, and research notes. Cancel to keep them, or export a report before editing.",
+      message: file ? `Importing this text will clear the current analysis and its ${reviewContent}. Cancel to keep them, or export a backup before replacing the source.` : `Changing the source will clear the current analysis and its ${reviewContent}. Cancel to keep them, or export a backup before editing.`,
       confirmLabel: file ? "Replace source" : "Edit source",
     })) return false;
     if (projectRef.current !== current) return false;
@@ -297,7 +299,7 @@ export function ComparisonWorkspace() {
   async function loadExample() {
     const current = projectRef.current;
     if (!current || busy) return;
-    if (hasResearchContent(current) && !await confirmAction({ title: "Load the example?", message: `This replaces the sources and analysis in “${current.name}”${hasAnnotations(current.analysis) ? ", including your review marks and research notes" : ""}.`, confirmLabel: "Load example" })) return;
+    if (hasResearchContent(current) && !await confirmAction({ title: "Load the example?", message: `This replaces the sources and analysis in “${current.name}”${hasAnnotations(current.analysis) ? `, including your ${reviewContent}` : ""}.`, confirmLabel: "Load example" })) return;
     if (projectRef.current !== current) return;
     const updated = changeProject({ ...current, sources: { ...example }, sourceFiles: { A: null, B: null }, analysis: null, isExample: true });
     setError(null);
@@ -310,7 +312,7 @@ export function ComparisonWorkspace() {
   async function clearWorkspace() {
     const current = projectRef.current;
     if (!current || busy) return;
-    if (hasResearchContent(current) && !await confirmAction({ title: "Clear this workspace?", message: `This removes both sources and the analysis${hasAnnotations(current.analysis) ? ", including your review marks and research notes" : ""}. The project itself will be kept.`, confirmLabel: "Clear workspace" })) return;
+    if (hasResearchContent(current) && !await confirmAction({ title: "Clear this workspace?", message: `This removes both sources and the analysis${hasAnnotations(current.analysis) ? `, including your ${reviewContent}` : ""}. The project itself will be kept.`, confirmLabel: "Clear workspace" })) return;
     if (projectRef.current !== current) return;
     const updated = changeProject({ ...current, sources: { sourceA: "", sourceB: "" }, sourceFiles: { A: null, B: null }, analysis: null, isExample: false });
     setError(null);
@@ -366,7 +368,7 @@ export function ComparisonWorkspace() {
 
   async function removeProject() {
     const current = projectRef.current;
-    if (!current || busy || !await confirmAction({ title: `Delete “${current.name}”?`, message: "This permanently removes the project, its sources, analysis, and any review notes.", confirmLabel: "Delete project" })) return;
+    if (!current || busy || !await confirmAction({ title: `Delete “${current.name}”?`, message: `This permanently removes the project, its sources, analysis, and any ${reviewContent}.`, confirmLabel: "Delete project" })) return;
     setTransitioning(true);
     deletingProjectId.current = current.id;
     cancelSaveTimer();
@@ -453,7 +455,7 @@ export function ComparisonWorkspace() {
   async function compare() {
     const current = projectRef.current;
     if (!canCompare || !current || activeComparison.current || pendingConfirmation.current) return;
-    if (hasAnnotations(current.analysis) && !await confirmAction({ title: "Run a new comparison?", message: "If the new comparison succeeds, it will replace these findings, review marks, and research notes. Cancelling or a failed comparison keeps them. Export a report first if you want a copy.", confirmLabel: "Compare sources" })) return;
+    if (hasAnnotations(current.analysis) && !await confirmAction({ title: "Run a new comparison?", message: `If the new comparison succeeds, it will replace these findings and clear their ${reviewContent}. Cancelling or a failed comparison keeps them. Export a backup first if you want a copy.`, confirmLabel: "Compare sources" })) return;
     if (projectRef.current !== current || activeComparison.current) return;
     const active: ActiveComparison = { controller: new AbortController(), projectId: current.id, timeoutId: null };
     activeComparison.current = active;
@@ -483,7 +485,7 @@ export function ComparisonWorkspace() {
       if (!response.ok) throw new Error(payload.error || "This comparison could not be completed. Please try again.");
       finishComparison(active);
       const updated = changeProject({ ...current, analysis: { result: payload as ComparisonResult, completedAt: Date.now() } });
-      resetExplorer();
+      resetExplorer(updated.analysis);
       setMode("explorer");
       setConnection("connected");
       await persist(updated).catch(() => {});

@@ -9,7 +9,7 @@ import { type Dispatch, type RefObject, type SetStateAction, useCallback, useEff
 import type { GroupImperativeHandle } from "react-resizable-panels";
 import { relationships, relationshipLabels, type Finding, type Relationship, type SourceId } from "@/lib/comparison-schema";
 import { pdfPageLabel } from "@/lib/pdf-page-map";
-import type { FindingReview, ResearchProject } from "@/lib/project-store";
+import { effectiveFinding, hasFindingCorrection, type FindingReview, type ResearchProject } from "@/lib/project-store";
 import { ExplorerDrawer, ExplorerPanels, loadExplorerPreferences, useExplorerViewport, writeExplorerPreferences, type ExplorerPreferences } from "./explorer-panels";
 import { SourceInspector } from "./source-inspector";
 import { containsHan, findReaderMatches, type ReaderMatch, type ReaderMemory } from "./source-reader";
@@ -17,7 +17,7 @@ import { containsHan, findReaderMatches, type ReaderMatch, type ReaderMemory } f
 export type ExplorerState = {
   query: string;
   relationship: Relationship | "all";
-  reviewStatus: "all" | "unreviewed" | "reviewed";
+  reviewStatus: "all" | "unreviewed" | "reviewed" | "excluded";
   importantOnly: boolean;
   selectedIndex: number | null;
   source: SourceId | null;
@@ -39,15 +39,16 @@ export function createExplorerMemory(): ExplorerMemory {
   return { reader: {}, listTop: 0, listIndex: null, detailTop: 0, detailIndex: null, searchRequest: 0 };
 }
 
-export function initialExplorerState(): ExplorerState {
+export function initialExplorerState(analysis?: ResearchProject["analysis"]): ExplorerState {
+  const firstIncluded = analysis?.result.findings.findIndex((_, index) => !analysis.reviewByFinding?.[index]?.excluded) ?? -1;
   return {
     query: "", relationship: "all", reviewStatus: "all", importantOnly: false,
-    selectedIndex: 0, source: null, evidenceIndex: null, occurrences: {}, revision: 0,
+    selectedIndex: firstIncluded < 0 ? null : firstIncluded, source: null, evidenceIndex: null, occurrences: {}, revision: 0,
   };
 }
 
 type Analysis = NonNullable<ResearchProject["analysis"]>;
-type FindingRow = { finding: Finding; index: number };
+type FindingRow = { finding: Finding; index: number; review?: FindingReview };
 type Filters = Pick<ExplorerState, "query" | "relationship" | "reviewStatus" | "importantOnly">;
 type Evidence = { index: number; source: SourceId; quote: string; matches: ReaderMatch[] };
 
@@ -63,10 +64,10 @@ type Props = {
   readOnly: boolean;
 };
 
-function matchingFindings(analysis: Analysis, filters: Filters): FindingRow[] {
+function filterFindings(rows: FindingRow[], filters: Filters) {
   const query = filters.query.trim().toLowerCase();
-  return analysis.result.findings.map((finding, index) => ({ finding, index })).filter(({ finding, index }) => {
-    const review = analysis.reviewByFinding?.[index];
+  const selectedScope = rows.filter(({ review }) => Boolean(review?.excluded) === (filters.reviewStatus === "excluded"));
+  const visible = selectedScope.filter(({ finding, review }) => {
     if (filters.relationship !== "all" && finding.relationship !== filters.relationship) return false;
     if (filters.reviewStatus === "reviewed" && !review?.reviewed) return false;
     if (filters.reviewStatus === "unreviewed" && review?.reviewed) return false;
@@ -74,6 +75,7 @@ function matchingFindings(analysis: Analysis, filters: Filters): FindingRow[] {
     return !query || [finding.topic, finding.explanation, ...finding.evidence.map(({ quote }) => quote), review?.note ?? ""]
       .some((part) => part.toLowerCase().includes(query));
   });
+  return { selectedScope, visible };
 }
 
 function findSource(finding: Finding | undefined, preferred: SourceId): SourceId {
@@ -91,9 +93,10 @@ const quickFilters = [
   { value: "all", label: "All" }, { value: "agreement", label: "Agreement" }, { value: "potential_conflict", label: "Conflict" },
 ] as const;
 
-function FindingsNavigation({ analysis, visible, state, memory, searchRef, onFilters, onSelect }: {
-  analysis: Analysis;
+function FindingsNavigation({ selectedScope, visible, omittedFindings, state, memory, searchRef, onFilters, onSelect }: {
+  selectedScope: FindingRow[];
   visible: FindingRow[];
+  omittedFindings: number;
   state: ExplorerState;
   memory: ExplorerMemory;
   searchRef: RefObject<HTMLInputElement | null>;
@@ -102,16 +105,15 @@ function FindingsNavigation({ analysis, visible, state, memory, searchRef, onFil
 }) {
   const [advanced, setAdvanced] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
-  const { findings, omittedFindings } = analysis.result;
   const { query, relationship, reviewStatus, importantOnly, selectedIndex } = state;
   const filtered = Boolean(query || relationship !== "all" || reviewStatus !== "all" || importantOnly);
   const advancedActive = reviewStatus !== "all" || importantOnly || !quickFilters.some((item) => item.value === relationship);
-  const reviewed = findings.reduce((count, _, index) => count + (analysis.reviewByFinding?.[index]?.reviewed ? 1 : 0), 0);
+  const reviewed = selectedScope.filter(({ review }) => review?.reviewed).length;
   const relationCounts = useMemo(() => {
     const counts = new Map<Relationship, number>();
-    for (const { relationship: item } of findings) counts.set(item, (counts.get(item) ?? 0) + 1);
+    for (const { finding: { relationship: item } } of selectedScope) counts.set(item, (counts.get(item) ?? 0) + 1);
     return counts;
-  }, [findings]);
+  }, [selectedScope]);
   const arrangement = visible.map(({ index }) => index).join(",");
 
   useLayoutEffect(() => {
@@ -134,7 +136,7 @@ function FindingsNavigation({ analysis, visible, state, memory, searchRef, onFil
   return <nav className="studio-findings" aria-label="Findings">
     <div className="findings-controls">
       <div className="findings-heading">
-        <h2>Findings <span>{findings.length}</span></h2>
+        <h2>Findings <span>{selectedScope.length}</span></h2>
         <button type="button" className={`studio-icon${advancedActive ? " filter-active" : ""}`} aria-label="Finding filters" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)} title="Finding filters"><SlidersHorizontal size={17} aria-hidden="true" /></button>
       </div>
       <label className="explorer-search"><Search size={17} strokeWidth={1.7} aria-hidden="true" /><span className="sr-only">Filter findings</span><input ref={searchRef} type="search" value={query} onChange={(event) => onFilters({ query: event.target.value })} placeholder="Filter findings…" /></label>
@@ -143,11 +145,11 @@ function FindingsNavigation({ analysis, visible, state, memory, searchRef, onFil
       </div>
       {advanced && <div className="findings-advanced">
         <label>Relationship<select value={relationship} onChange={(event) => onFilters({ relationship: event.target.value as Filters["relationship"] })}><option value="all">All relationships</option>{relationships.map((value) => <option key={value} value={value}>{relationshipLabels[value]}</option>)}</select></label>
-        <label>Review status<select value={reviewStatus} onChange={(event) => onFilters({ reviewStatus: event.target.value as Filters["reviewStatus"] })}><option value="all">All findings</option><option value="unreviewed">Not reviewed</option><option value="reviewed">Reviewed</option></select></label>
+        <label>Review status<select value={reviewStatus} onChange={(event) => onFilters({ reviewStatus: event.target.value as Filters["reviewStatus"] })}><option value="all">All findings</option><option value="unreviewed">Not reviewed</option><option value="reviewed">Reviewed</option><option value="excluded">Excluded</option></select></label>
         <label className="studio-check"><input type="checkbox" checked={importantOnly} onChange={(event) => onFilters({ importantOnly: event.target.checked })} />Important only</label>
       </div>}
       <div className="findings-counts">
-        <span>{filtered ? `${visible.length} of ${findings.length} shown` : `${reviewed} of ${findings.length} reviewed`}</span>
+        <span>{filtered ? `${visible.length} of ${selectedScope.length} shown` : `${reviewed} of ${selectedScope.length} reviewed`}</span>
         {filtered && <button type="button" className="studio-link" onClick={() => onFilters({ query: "", relationship: "all", reviewStatus: "all", importantOnly: false })}>Clear filters</button>}
       </div>
       {omittedFindings > 0 && <p className="findings-omitted">{omittedFindings} {omittedFindings === 1 ? "finding omitted" : "findings omitted"} during evidence verification.</p>}
@@ -155,8 +157,7 @@ function FindingsNavigation({ analysis, visible, state, memory, searchRef, onFil
     <motion.div layoutScroll ref={listRef} className="findings-scroll" onScroll={(event) => { memory.listTop = event.currentTarget.scrollTop; }}>
       {visible.length ? <ul>
         <LayoutGroup id="studio-findings">
-        {visible.map(({ finding, index }) => {
-          const review = analysis.reviewByFinding?.[index];
+        {visible.map(({ finding, index, review }) => {
           const selected = index === selectedIndex;
           return <motion.li key={index} layout="position" layoutDependency={arrangement} transition={{ layout: { duration: .17, ease: [.2, .78, .22, 1] } }}>
             <button type="button" className="studio-finding-row" aria-current={selected ? "true" : undefined} aria-label={`Finding ${index + 1}: ${finding.topic}`} onClick={() => onSelect(index)}>
@@ -174,6 +175,44 @@ function FindingsNavigation({ analysis, visible, state, memory, searchRef, onFil
       </ul> : <p className="studio-empty">No findings match these filters.</p>}
     </motion.div>
   </nav>;
+}
+
+function FindingCorrection({ original, review, onChange }: {
+  original: Finding;
+  review?: FindingReview;
+  onChange: (patch: Partial<FindingReview>) => void;
+}) {
+  const [draft, setDraft] = useState<(Pick<Finding, "relationship" | "explanation"> & { original: Finding }) | null>(null);
+  const edit = draft?.original === original ? draft : null;
+
+  if (!edit) return <div className="studio-review-actions finding-correction-actions">
+    <button type="button" className="studio-review-button" onClick={() => {
+      const { relationship, explanation } = effectiveFinding(original, review);
+      setDraft({ original, relationship, explanation });
+    }}>Edit correction</button>
+    {hasFindingCorrection(review) && <button type="button" className="studio-review-button" onClick={() => onChange({ relationshipOverride: undefined, explanationOverride: undefined })}>Reset to AI</button>}
+    <button type="button" className="studio-review-button" onClick={() => onChange({ excluded: review?.excluded ? undefined : true })}>{review?.excluded ? "Restore finding" : "Exclude finding"}</button>
+  </div>;
+
+  return <form className="finding-correction-editor" aria-label="Finding correction" onSubmit={(event) => {
+    event.preventDefault();
+    const explanation = edit.explanation;
+    onChange({
+      relationshipOverride: edit.relationship === original.relationship ? undefined : edit.relationship,
+      explanationOverride: explanation.trim() && explanation !== original.explanation ? explanation : undefined,
+    });
+    setDraft(null);
+  }}>
+    <label>Relationship<select autoFocus value={edit.relationship} onChange={(event) => setDraft({ ...edit, relationship: event.target.value as Relationship })}>
+      {relationships.map((relationship) => <option key={relationship} value={relationship}>{relationshipLabels[relationship]}</option>)}
+    </select></label>
+    <label htmlFor="correction-explanation">Explanation</label>
+    <div className="studio-notes"><textarea id="correction-explanation" rows={4} value={edit.explanation} onChange={(event) => setDraft({ ...edit, explanation: event.target.value })} placeholder="Use AI explanation" /></div>
+    <div className="studio-review-actions">
+      <button type="submit" className="button button-primary">Save correction</button>
+      <button type="button" className="studio-review-button" onClick={() => setDraft(null)}>Cancel</button>
+    </div>
+  </form>;
 }
 
 function FindingDetail({ selected, index, previous, next, total, review, evidence, sourceFiles, active, state, outsideFilters, memory, readOnly, phone, inspectorOpen, inspectorToggle, onShowFindings, onToggleInspector, onSelect, onCitation, onReview }: {
@@ -201,6 +240,7 @@ function FindingDetail({ selected, index, previous, next, total, review, evidenc
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
+  const displayed = selected && effectiveFinding(selected, review);
   useLayoutEffect(() => {
     const body = scrollRef.current;
     if (!body) return;
@@ -222,12 +262,13 @@ function FindingDetail({ selected, index, previous, next, total, review, evidenc
       <button ref={inspectorToggle} type="button" className="studio-icon finding-inspector-trigger" title={inspectorOpen ? "Hide Source Inspector" : "Show Source Inspector"} aria-label={inspectorOpen ? "Hide Source Inspector from detail" : "Show Source Inspector"} aria-expanded={inspectorOpen} onClick={onToggleInspector}>{inspectorOpen ? <PanelRightClose size={18} aria-hidden="true" /> : <PanelRightOpen size={18} aria-hidden="true" />}</button>
     </header>
     <div className="finding-scroll" ref={scrollRef} onScroll={(event) => { memory.detailTop = event.currentTarget.scrollTop; }}>
-      {selected && index !== null ? <div className="finding-content">
+      {selected && displayed && index !== null ? <div className="finding-content">
         <header className="finding-text">
-          <RelationshipBadge relationship={selected.relationship} />
-          {outsideFilters && <span className="finding-outside">Outside current filters</span>}
+          <RelationshipBadge relationship={displayed.relationship} />
+          {hasFindingCorrection(review) && <span className="finding-outside">Human-corrected</span>}
+          {review?.excluded ? <span className="finding-outside">Excluded</span> : outsideFilters && <span className="finding-outside">Outside current filters</span>}
           <h1 data-han={containsHan(selected.topic) ? "" : undefined}>{selected.topic}</h1>
-          <p data-han={containsHan(selected.explanation) ? "" : undefined}>{selected.explanation}</p>
+          <p data-han={containsHan(displayed.explanation) ? "" : undefined}>{displayed.explanation}</p>
         </header>
         <div className="studio-evidence-grid">
           {(["A", "B"] as const).map((source) => {
@@ -265,6 +306,7 @@ function FindingDetail({ selected, index, previous, next, total, review, evidenc
             <motion.button type="button" className="studio-review-button" whileTap={readOnly ? undefined : { scale: .96 }} transition={{ duration: .12 }} aria-pressed={Boolean(review?.reviewed)} onClick={() => onReview(index, { reviewed: !review?.reviewed })}><span className="review-check"><Check size={15} strokeWidth={2} aria-hidden="true" /></span>Reviewed</motion.button>
             <motion.button type="button" className="studio-review-button" whileTap={readOnly ? undefined : { scale: .96 }} transition={{ duration: .12 }} aria-pressed={Boolean(review?.important)} onClick={() => onReview(index, { important: !review?.important })}><Bookmark size={19} strokeWidth={1.7} fill={review?.important ? "currentColor" : "none"} aria-hidden="true" />Important</motion.button>
           </div>
+          <FindingCorrection key={index} original={selected} review={review} onChange={(patch) => onReview(index, patch)} />
           <label htmlFor="research-notes">Research notes</label>
           <div className="studio-notes">
             <textarea id="research-notes" key={index} rows={5} value={review?.note ?? ""} onChange={(event) => onReview(index, { note: event.target.value })} placeholder="Add your observations or questions…" />
@@ -286,10 +328,15 @@ export function EvidenceExplorer({ analysis, sourceFiles, sources, state, memory
   const groupRef = useRef<GroupImperativeHandle>(null);
   const inspectorToggle = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const { findings } = analysis.result;
+  const { findings, omittedFindings } = analysis.result;
+  const { reviewByFinding } = analysis;
   const { query, relationship, reviewStatus, importantOnly, selectedIndex } = state;
   const selected = selectedIndex === null ? undefined : findings[selectedIndex];
-  const visible = useMemo(() => matchingFindings(analysis, { query, relationship, reviewStatus, importantOnly }), [analysis, query, relationship, reviewStatus, importantOnly]);
+  const rows = useMemo(() => findings.map((finding, index) => {
+    const review = reviewByFinding?.[index];
+    return { finding: effectiveFinding(finding, review), index, review };
+  }), [findings, reviewByFinding]);
+  const { selectedScope, visible } = useMemo(() => filterFindings(rows, { query, relationship, reviewStatus, importantOnly }), [rows, query, relationship, reviewStatus, importantOnly]);
   const aMap = sourceFiles.A?.pdf?.pageMap;
   const bMap = sourceFiles.B?.pdf?.pageMap;
   const { sourceA, sourceB } = sources;
@@ -354,7 +401,7 @@ export function EvidenceExplorer({ analysis, sourceFiles, sources, state, memory
   function setFilters(patch: Partial<Filters>) {
     onStateChange((current) => {
       const next = { ...current, ...patch };
-      const matches = matchingFindings(analysis, next);
+      const { visible: matches } = filterFindings(rows, next);
       return matches.some(({ index }) => index === next.selectedIndex) ? next : select(next, matches[0]?.index ?? null);
     });
   }
@@ -379,12 +426,12 @@ export function EvidenceExplorer({ analysis, sourceFiles, sources, state, memory
     onStateChange((current) => ({ ...current, revision: current.revision + 1 }));
   }, [onStateChange]);
 
-  const navigation = <FindingsNavigation analysis={analysis} visible={visible} state={state} memory={memory} searchRef={searchRef} onFilters={setFilters} onSelect={selectFinding} />;
+  const navigation = <FindingsNavigation selectedScope={selectedScope} visible={visible} omittedFindings={omittedFindings} state={state} memory={memory} searchRef={searchRef} onFilters={setFilters} onSelect={selectFinding} />;
   const detail = <FindingDetail
     key="detail" selected={selected} index={selectedIndex} total={findings.length}
     previous={selectedIndex === null ? undefined : visible.findLast(({ index }) => index < selectedIndex)?.index}
     next={visible.find(({ index }) => selectedIndex === null || index > selectedIndex)?.index}
-    review={selectedIndex === null ? undefined : analysis.reviewByFinding?.[selectedIndex]}
+    review={selectedIndex === null ? undefined : reviewByFinding?.[selectedIndex]}
     evidence={evidence} sourceFiles={sourceFiles} active={active} state={state} outsideFilters={outsideFilters}
     memory={memory} readOnly={readOnly} phone={phone} inspectorOpen={inspectorOpen} inspectorToggle={inspectorToggle}
     onShowFindings={() => setDrawer("findings")}
