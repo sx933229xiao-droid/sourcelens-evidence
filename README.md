@@ -1,10 +1,10 @@
 # SourceLens
 
-SourceLens is a local research workspace for comparing claims across two documents and tracing each finding back to its exact source text. The stable version is [V0.8.1](https://github.com/sx933229xiao-droid/sourcelens-evidence/tree/v0.8.1).
+SourceLens is a local research workspace for comparing claims across two documents and tracing each finding back to its exact source text. The stable version is [V0.9](https://github.com/sx933229xiao-droid/sourcelens-evidence/tree/v0.9).
 
 ![SourceLens V0.8.1 Evidence Explorer with findings, side-by-side excerpts, and a highlighted quote in Source Inspector](docs/images/sourcelens-demo.png)
 
-*The screenshot shows a local sample review of the project's Chinese and English documentation.*
+*The V0.8.1 screenshot shows a sample review of the project's Chinese and English documentation.*
 
 ## Run locally
 
@@ -38,12 +38,13 @@ npm start
 
 ## Use the workspace
 
-1. **Prepare two sources.** Paste text or import UTF-8 TXT, Markdown, or a text-based PDF of up to 50 MB per file. For PDFs, extract the whole document or choose a page range. Review the reading order in the preview before importing. Editing extracted text removes its page index.
-2. **Compare sources.** Compare sends both complete texts in one request. Findings distinguish agreements, potential conflicts, context differences, single-source claims, and claims that need review. SourceLens keeps findings with valid structure and exact excerpts and reports how many it omitted. An exact match confirms where a quote appears. Assess the claim and its context during review.
+1. **Prepare two sources.** Select an existing project or click **New project** beside the project selector. In **Workspace**, paste text or import UTF-8 TXT, Markdown, or a text-based PDF of up to 50 MB per file. For PDFs, extract the whole document or choose a page range. Review the reading order in the preview before importing. Editing extracted text removes its page index.
+2. **Compare sources.** Compare sends both complete texts in one request. Findings distinguish agreements, potential conflicts, context differences, single-source claims, and claims that need review. SourceLens keeps findings with valid structure and exact excerpts and reports how many it omitted. After a successful comparison, use the top tabs to switch between **Workspace** and **Evidence Explorer**. An exact match confirms where a quote appears. Assess the claim and its context during review.
 3. **Review the evidence.** Filter by keyword, relationship, or review status. Mark findings as reviewed or important and add research notes. Click an excerpt to highlight it in the full text in **Source Inspector**. With a PDF page index, browse physical pages, select repeated matches, or jump to a quote that spans pages. Drag the desktop dividers to resize the three panes. Source Inspector opens as a drawer on smaller screens.
-4. **Save or share the work.** Projects and annotations save in your browser. **Export → Export Markdown** downloads the full analysis, evidence, available page references, and review notes. **Export → Export backup** saves both sources and the current analysis in a `.sourcelens.json` file. Use **Project actions → Restore project** to restore a valid backup as a separate project.
+4. **Correct a finding.** In the finding detail, use **Edit correction** to revise its relationship or explanation. **Reset to AI** restores the original values. **Exclude finding** hides the finding from the default list and Markdown report. To bring it back, choose **Excluded** under **Review status** in the Findings filters, then select **Restore finding** in the detail.
+5. **Save or share the work.** Projects and review data save in your browser. **Export → Export Markdown** reports included findings with their current relationships, explanations, evidence, available page references, and notes. It counts excluded findings separately. **Export → Export backup** saves both sources, the original AI result, and all review data in a `.sourcelens.json` file. Use **Project actions → Restore project** to restore a valid backup as a separate project.
 
-A failed or cancelled comparison preserves the previous analysis and its annotations. Editing or replacing a source clears its analysis. SourceLens asks before discarding review marks or notes.
+A failed or cancelled comparison preserves the previous analysis and its review data. Editing or replacing a source clears its analysis. SourceLens asks for confirmation before a source change or a new comparison can discard review data, including corrections and exclusions.
 
 ## Architecture and data
 
