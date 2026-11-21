@@ -2,9 +2,9 @@
 
 SourceLens is a local research workspace for comparing claims across two documents and tracing each finding back to its exact source text. The stable version is [V0.9](https://github.com/sx933229xiao-droid/sourcelens-evidence/tree/v0.9).
 
-![SourceLens V0.8.1 Evidence Explorer with findings, side-by-side excerpts, and a highlighted quote in Source Inspector](docs/images/sourcelens-demo.png)
+![SourceLens V0.9 with top navigation, a human-corrected finding, and its highlighted quote in Source Inspector](docs/images/sourcelens-demo.png)
 
-*The V0.8.1 screenshot shows a sample review of the project's Chinese and English documentation.*
+*The demo project uses SourceLens's published documentation to show a human correction alongside its original excerpts.*
 
 ## Run locally
 
