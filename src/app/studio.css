@@ -14,21 +14,19 @@
   --focus-ring: #14639e;
   --quote-highlight: #fce9bb;
   --font-reading: Georgia, "Noto Serif SC", "Noto Serif CJK SC", "Songti SC", "Source Han Serif SC", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", SimSun, serif;
-  --rail-width: 64px;
   --app-bar-height: 60px;
   --studio-ease: cubic-bezier(.2, .78, .22, 1);
 }
 
 .studio-shell {
   display: grid;
-  grid-template: var(--app-bar-height) minmax(0, 1fr) / var(--rail-width) minmax(0, 1fr);
+  grid-template: var(--app-bar-height) 40px minmax(0, 1fr) / minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
   background: var(--canvas);
 }
 .studio-topbar {
-  grid-column: 1 / -1;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -39,7 +37,7 @@
 .studio-brand-mark {
   display: grid;
   place-items: center;
-  width: var(--rail-width);
+  width: 64px;
   align-self: stretch;
   min-height: calc(var(--app-bar-height) - 1px);
   background: var(--rail);
@@ -53,20 +51,19 @@
   letter-spacing: -.8px;
   padding-inline: 20px;
 }
-.studio-rail {
-  min-height: 0;
+.studio-mode-tabs {
   background: var(--rail);
-  padding: 16px 10px;
-  border-right: 1px solid var(--line);
+  padding: 2px 10px;
+  border-bottom: 1px solid var(--line);
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
+  align-items: center;
+  gap: 4px;
 }
 .studio-nav-item {
   position: relative;
   min-width: 0;
-  min-height: 42px;
+  min-height: 34px;
+  padding: 0 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -74,13 +71,13 @@
   border-radius: 8px;
   color: #455465;
   background: transparent;
+  font-size: 13px;
+  white-space: nowrap;
 }
-.studio-nav-label { display: none; }
 .studio-mode-mark { position: absolute; inset: 0; border-radius: inherit; background: #e3eaef; pointer-events: none; }
 .studio-nav-item > :is(svg, .studio-nav-label) { position: relative; }
 .studio-nav-item[aria-current="page"] { color: var(--accent); }
 .studio-nav-item:hover:not(:disabled):not([aria-current]) { background: var(--hover); color: var(--ink); }
-.studio-rail-projects { margin-top: 8px; }
 .studio-main { min-height: 0; min-width: 0; overflow: hidden; display: flex; flex-direction: column; }
 .studio-stage { position: relative; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
 .studio-scene { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
@@ -97,8 +94,6 @@
   padding-right: 14px;
 }
 .studio-breadcrumb { display: flex; gap: 11px; align-items: center; min-width: 0; flex: 1; }
-.studio-crumb-divider { color: #7a7773; opacity: .8; }
-.studio-mode-label { flex: none; color: #17202a; font: 700 16px/1.2 var(--font-reading); }
 .studio-project-select { position: relative; min-width: 60px; max-width: min(25vw, 250px); }
 .studio-project-select select {
   appearance: none;
@@ -117,6 +112,7 @@
 }
 .studio-project-select select:hover:not(:disabled) { background: var(--hover); border-color: var(--line); }
 .studio-project-select > svg { position: absolute; right: 7px; top: 11px; pointer-events: none; }
+.studio-new-project.button { flex: none; min-height: 34px; }
 .studio-rename { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .studio-rename input { width: min(180px, 24vw); min-width: 50px; padding: 5px 9px; height: 34px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
 .studio-search-trigger,
@@ -206,30 +202,26 @@
 @media (max-width: 1090px) {
   .studio-project-bar { gap: 9px; }
   .studio-wordmark { padding-inline: 12px; font-size: 22px; }
-  .studio-mode-label { font-size: 14px; }
   .studio-top-actions { gap: 4px; }
   .studio-save { width: 74px; }
 }
 @media (max-width: 875px) {
+  .studio-new-project.button { width: 34px; padding: 0; }
+  .studio-new-project > span { display: none; }
   .studio-search-trigger { flex: none; width: 34px; padding: 0; justify-content: center; }
   .studio-search-trigger span, .studio-search-trigger kbd { display: none; }
   .studio-connection { display: none; }
 }
 @media (max-width: 759px) {
   :root { --app-bar-height: 53px; }
-  .studio-shell { grid-template: var(--app-bar-height) 40px minmax(0, 1fr) / minmax(0, 1fr); }
   .studio-brand-mark { width: 36px; border: 0; background: transparent; }
   .studio-brand-mark svg { padding: 2px; width: 16px; height: 16px; }
   .studio-wordmark { display: none; }
-  .studio-rail { flex-direction: row; gap: 4px; padding: 2px 10px; border-right: 0; border-bottom: 1px solid var(--line); }
-  .studio-nav-item { min-height: 33px; padding: 0 10px; font-size: 12px; }
+  .studio-nav-item { min-height: 33px; font-size: 12px; }
   .studio-nav-item svg { width: 15px; height: 15px; }
-  .studio-nav-label { display: inline; }
-  .studio-rail-projects { display: none; }
   .studio-project-bar { padding-right: 5px; gap: 3px; }
   .studio-project-select { max-width: min(34vw, 200px); }
   .studio-project-select select { padding-left: 3px; font-size: 12px; }
-  .studio-mode-label, .studio-crumb-divider { display: none; }
   .studio-save { width: auto; padding: 0 4px; min-width: 17px; }
   .studio-save > span:not(.studio-save-check) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .studio-export.button { min-width: 34px; padding: 0 6px; gap: 0; }

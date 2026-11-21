@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, CircleAlert, Download, Ellipsis, LoaderCircle, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
 import { motion } from "motion/react";
 import type { ProjectSummary, ResearchProject } from "@/lib/project-store";
-import type { StudioMode } from "./studio-shell";
 
 export type SaveState = "restoring" | "idle" | "saving" | "saved" | "error";
 
@@ -12,7 +11,6 @@ type ProjectToolbarProps = {
   project: ResearchProject | null;
   projects: ProjectSummary[];
   saveState: SaveState;
-  mode: StudioMode;
   disabled: boolean;
   searchEnabled: boolean;
   onSearch: () => void;
@@ -33,7 +31,7 @@ const saveLabels: Record<SaveState, string> = {
   error: "Save failed",
 };
 
-export function ProjectToolbar({ project, projects, saveState, mode, disabled, searchEnabled, onSearch, onSelect, onCreate, onRename, onDelete, onExport, onBackup, onRestore }: ProjectToolbarProps) {
+export function ProjectToolbar({ project, projects, saveState, disabled, searchEnabled, onSearch, onSelect, onCreate, onRename, onDelete, onExport, onBackup, onRestore }: ProjectToolbarProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const nameRef = useRef<HTMLInputElement>(null);
@@ -42,6 +40,10 @@ export function ProjectToolbar({ project, projects, saveState, mode, disabled, s
   const exportMenu = useRef<HTMLDivElement>(null);
   useEffect(() => { setName(project?.name ?? ""); }, [project?.id, project?.name]);
   useEffect(() => { if (editing) { nameRef.current?.focus(); nameRef.current?.select(); } }, [editing]);
+
+  async function createAndRename() {
+    if (await onCreate()) setEditing(true);
+  }
 
   function cancelRename() {
     setEditing(false);
@@ -68,7 +70,11 @@ export function ProjectToolbar({ project, projects, saveState, mode, disabled, s
             <ChevronDown size={12} aria-hidden="true" />
           </div>
         )}
-        {!editing && <><span className="studio-crumb-divider" aria-hidden="true">/</span><span className="studio-mode-label">{mode === "explorer" ? "Evidence Explorer" : "Workspace"}</span></>}
+        {!editing && (
+          <button type="button" className="button button-secondary studio-new-project" disabled={disabled} aria-label="New project" title="New project" onClick={createAndRename}>
+            <Plus size={15} aria-hidden="true" /><span>New project</span>
+          </button>
+        )}
       </div>
       <button type="button" className="studio-search-trigger" onClick={onSearch} disabled={!searchEnabled} aria-label="Search findings" aria-keyshortcuts="Control+K Meta+K">
         <Search size={16} strokeWidth={1.7} aria-hidden="true" /><span>Search findings, quotes, or notes…</span><kbd>Ctrl K</kbd>
@@ -86,7 +92,7 @@ export function ProjectToolbar({ project, projects, saveState, mode, disabled, s
         <button type="button" disabled={disabled || !project} onClick={() => { exportMenu.current?.hidePopover(); onBackup(); }}><Download size={15} aria-hidden="true" />Export backup</button>
       </div>
       <div id="studio-project-menu" ref={projectMenu} popover="auto" className="studio-popover" aria-label="Project actions">
-        <button type="button" disabled={disabled} onClick={async () => { projectMenu.current?.hidePopover(); if (await onCreate()) setEditing(true); }}><Plus size={15} aria-hidden="true" />New project</button>
+        <button type="button" disabled={disabled} onClick={() => { projectMenu.current?.hidePopover(); void createAndRename(); }}><Plus size={15} aria-hidden="true" />New project</button>
         <button type="button" disabled={disabled || !project} onClick={() => { projectMenu.current?.hidePopover(); setName(project?.name ?? ""); setEditing(true); }}><Pencil size={15} aria-hidden="true" />Rename project</button>
         <button type="button" disabled={disabled} onClick={() => { projectMenu.current?.hidePopover(); backupInputRef.current?.click(); }}><Upload size={15} aria-hidden="true" />Restore project</button>
         <button type="button" className="studio-destructive" disabled={disabled || !project} onClick={() => { projectMenu.current?.hidePopover(); void onDelete(); }}><Trash2 size={15} aria-hidden="true" />Delete project</button>

@@ -501,7 +501,7 @@ export function ComparisonWorkspace() {
       <StudioShell
         mode={mode} onModeChange={setMode} modeLocked={modeLocked} canOpenExplorer={Boolean(result)}
         toolbar={<ProjectToolbar
-          project={project} projects={projects} saveState={saveState} mode={mode} disabled={busy}
+          project={project} projects={projects} saveState={saveState} disabled={busy}
           searchEnabled={Boolean(result) && !modeLocked} onSearch={searchFindings}
           onSelect={selectProject} onCreate={createProject} onRename={renameProject} onDelete={removeProject}
           onExport={exportReport} onBackup={() => { void exportBackup(); }} onRestore={restoreBackup}

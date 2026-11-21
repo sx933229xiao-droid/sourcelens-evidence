@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, FolderOpen, Layers3 } from "lucide-react";
+import { FileText, Layers3 } from "lucide-react";
 import { LayoutGroup, MotionConfig, motion } from "motion/react";
 import type { ReactNode } from "react";
 
@@ -28,7 +28,7 @@ export function StudioShell({ mode, onModeChange, canOpenExplorer, modeLocked, t
         {toolbar}
       </header>
       <LayoutGroup id="studio-mode">
-      <nav className="studio-rail" aria-label="Research Studio">
+      <nav className="studio-mode-tabs" aria-label="Research Studio">
         <button type="button" className="studio-nav-item" aria-label="Workspace" title="Workspace" aria-current={mode === "workspace" ? "page" : undefined} disabled={modeLocked} onClick={() => onModeChange("workspace")}>
           {mode === "workspace" && <motion.span layoutId="active" className="studio-mode-mark" aria-hidden="true" transition={{ type: "spring", stiffness: 480, damping: 38 }} />}
           <FileText size={20} strokeWidth={1.7} aria-hidden="true" /><span className="studio-nav-label">Workspace</span>
@@ -36,9 +36,6 @@ export function StudioShell({ mode, onModeChange, canOpenExplorer, modeLocked, t
         <button type="button" className="studio-nav-item" aria-label="Evidence Explorer" title={canOpenExplorer ? "Evidence Explorer" : "Compare sources to open Evidence Explorer"} aria-current={mode === "explorer" ? "page" : undefined} disabled={modeLocked || !canOpenExplorer} onClick={() => onModeChange("explorer")}>
           {mode === "explorer" && <motion.span layoutId="active" className="studio-mode-mark" aria-hidden="true" transition={{ type: "spring", stiffness: 480, damping: 38 }} />}
           <Layers3 size={21} strokeWidth={1.7} aria-hidden="true" /><span className="studio-nav-label">Evidence Explorer</span>
-        </button>
-        <button type="button" className="studio-nav-item studio-rail-projects" aria-label="Projects" title="Projects" popoverTarget="studio-project-menu" disabled={modeLocked}>
-          <FolderOpen size={20} strokeWidth={1.7} aria-hidden="true" />
         </button>
       </nav>
       </LayoutGroup>
