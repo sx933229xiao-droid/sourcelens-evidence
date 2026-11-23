@@ -1,6 +1,8 @@
 # SourceLens
 
-SourceLens is a local research workspace for comparing claims across two documents and tracing each finding back to its exact source text. The stable version is [V0.9](https://github.com/sx933229xiao-droid/sourcelens-evidence/tree/v0.9).
+SourceLens is a local research workspace for comparing claims across two documents and tracing each finding back to its exact source text. See the tagged [V0.9 release snapshot](https://github.com/sx933229xiao-droid/sourcelens-evidence/tree/v0.9).
+
+**V0.9.1 on `main`.** The comparison prompt asks the model to copy short excerpts verbatim, including Markdown markers and whitespace, and check each quote against its cited source. It prioritizes consequential rule differences and clarifies when to classify them as potential conflicts. The server checks every excerpt against its exact source text.
 
 ![SourceLens V0.9 with top navigation, a human-corrected finding, and its highlighted quote in Source Inspector](docs/images/sourcelens-demo.png)
 
